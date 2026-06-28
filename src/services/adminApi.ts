@@ -348,10 +348,10 @@ export async function getAdminMindGames(params?: { page?: number; limit?: number
 }
 
 // --- System Broadcast ---
-export async function broadcastMessage(message: string): Promise<{ success: boolean; results: any }> {
-  return adminFetch<{ success: boolean; results: any }>('/broadcast', {
+export async function broadcastMessage(message: string, title?: string): Promise<{ success: boolean; sent: number; results?: any }> {
+  return adminFetch<{ success: boolean; sent: number; results?: any }>('/broadcast', {
     method: 'POST',
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ title: title || 'System Broadcast', body: message }),
   });
 }
 

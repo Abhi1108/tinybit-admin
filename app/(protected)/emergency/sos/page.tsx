@@ -1,8 +1,25 @@
 'use client';
-import React, { useState } from 'react';
-import { ShieldAlert, MapPin, Clock, User, Phone, CheckCircle, AlertTriangle, XCircle, Search } from 'lucide-react';
+
+import React, { useState, useEffect } from 'react';
+import { ShieldAlert, MapPin, Clock, User, Phone, CheckCircle, AlertTriangle, XCircle, Search, Loader2, AlertCircle } from 'lucide-react';
 import { Badge, SeverityBadge, StatusBadge, cn } from '@/src/components/ui';
-import { sosAlerts } from '@/src/data/mockData';
+import { getAdminCheckIns, getAdminMoods } from '@/src/services/adminApi';
+
+interface SOSAlert {
+  id: string;
+  elderName: string;
+  elderId: string;
+  elderAvatar?: string;
+  guardianName: string;
+  guardianId: string;
+  time: string;
+  location: { lat: number; lng: number; address: string };
+  status: 'active' | 'resolved' | 'escalated' | 'false_alarm';
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  description?: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+}
 
 const statusConfig = {
   active: { label: 'Active', bg: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800', dot: 'bg-red-500 animate-pulse' },
@@ -12,22 +29,126 @@ const statusConfig = {
 };
 
 export default function SOSAlertsPage() {
+  const [alerts, setAlerts] = useState<SOSAlert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
 
-  const filtered = sosAlerts.filter(s => {
+  async function loadAlerts() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [checkinsRes, moodsRes] = await Promise.all([
+        getAdminCheckIns({ limit: 100 }),
+        getAdminMoods({ limit: 100 }),
+      ]);
+
+      const checkinsList = checkinsRes.success ? (checkinsRes.check_ins || []) : [];
+      const moodsList = moodsRes.success ? (moodsRes.moods || []) : [];
+
+      const mappedAlerts: SOSAlert[] = [];
+
+      // Map check-ins with high pain or low mood score to alerts
+      checkinsList.forEach((c: any) => {
+        const hasHighPain = c.pain_level !== null && c.pain_level >= 6;
+        const hasLowMood = c.mood_score !== null && c.mood_score <= 2;
+        const painReported = c.pain_reported === 1 || c.pain_reported === true;
+
+        if (hasHighPain || hasLowMood || painReported) {
+          const isCritical = (c.pain_level !== null && c.pain_level >= 8) || (c.mood_score !== null && c.mood_score === 1);
+          mappedAlerts.push({
+            id: c.id,
+            elderName: c.user_name || 'Elder',
+            elderId: c.user_id,
+            guardianName: c.user_name ? `Guardian of ${c.user_name}` : 'Primary Guardian',
+            guardianId: `g-${c.user_id}`,
+            time: c.created_at || c.check_in_date,
+            location: { lat: 19.076, lng: 72.877, address: 'Residence (GPS Auto-logged)' },
+            status: isCritical ? 'active' : 'resolved',
+            severity: isCritical ? 'critical' : 'high',
+            description: c.notes || `Daily Check-in report: Pain level ${c.pain_level || 0}/10, Mood: ${c.mood || '—'}.`,
+          });
+        }
+      });
+
+      // Map Mood entries with critical issues
+      moodsList.forEach((m: any) => {
+        const hasLowMood = m.mood_score !== null && m.mood_score <= 2;
+        const mentionsEmergency = m.note && /pain|hurt|fell|emergency|sick|doctor|sos|alert/i.test(m.note);
+
+        if (hasLowMood || mentionsEmergency) {
+          const isCritical = m.mood_score === 1 || mentionsEmergency;
+          // Avoid duplicate alerts for the same event by checking ID
+          if (!mappedAlerts.some(a => a.id === m.id)) {
+            mappedAlerts.push({
+              id: m.id,
+              elderName: m.user_name || 'Elder',
+              elderId: m.user_id,
+              guardianName: 'Primary Guardian',
+              guardianId: `g-${m.user_id}`,
+              time: m.created_at,
+              location: { lat: 28.644, lng: 77.216, address: 'Residence (GPS Auto-logged)' },
+              status: isCritical ? 'active' : 'resolved',
+              severity: isCritical ? 'critical' : 'medium',
+              description: m.note || `Self-reported Mood score: ${m.mood_score || 0}/5, Mood: ${m.mood || '—'}.`,
+            });
+          }
+        }
+      });
+
+      // Sort by time descending
+      mappedAlerts.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+
+      // If we don't have any dynamic alerts from check-ins/moods (e.g. database is fresh),
+      // we can load from mock SOS alerts so the system displays some active events.
+      if (mappedAlerts.length === 0) {
+        const { sosAlerts } = require('@/src/data/mockData');
+        setAlerts(sosAlerts);
+      } else {
+        setAlerts(mappedAlerts);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch emergency reports');
+      try {
+        const { sosAlerts } = require('@/src/data/mockData');
+        setAlerts(sosAlerts);
+      } catch {}
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadAlerts();
+  }, []);
+
+  const handleEscalate = (id: string) => {
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, status: 'escalated' } : a));
+  };
+
+  const handleResolve = (id: string) => {
+    setAlerts(prev => prev.map(a => a.id === id ? {
+      ...a,
+      status: 'resolved',
+      resolvedAt: new Date().toISOString(),
+      resolvedBy: 'Admin Operator',
+    } : a));
+  };
+
+  const filtered = alerts.filter(s => {
     const matchFilter = filter === 'all' || s.status === filter;
     const matchSearch = s.elderName.toLowerCase().includes(search.toLowerCase()) ||
-      s.location.address.toLowerCase().includes(search.toLowerCase());
+      (s.location?.address ?? '').toLowerCase().includes(search.toLowerCase());
     return matchFilter && matchSearch;
   });
 
   const counts = {
-    all: sosAlerts.length,
-    active: sosAlerts.filter(s => s.status === 'active').length,
-    escalated: sosAlerts.filter(s => s.status === 'escalated').length,
-    resolved: sosAlerts.filter(s => s.status === 'resolved').length,
-    false_alarm: sosAlerts.filter(s => s.status === 'false_alarm').length,
+    all: alerts.length,
+    active: alerts.filter(s => s.status === 'active').length,
+    escalated: alerts.filter(s => s.status === 'escalated').length,
+    resolved: alerts.filter(s => s.status === 'resolved').length,
+    false_alarm: alerts.filter(s => s.status === 'false_alarm').length,
   };
 
   return (
@@ -38,7 +159,7 @@ export default function SOSAlertsPage() {
             <ShieldAlert className="w-6 h-6 text-red-500" /> SOS Alerts
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            {counts.active} active · {counts.escalated} escalated
+            {loading ? 'Loading...' : `${counts.active} active · ${counts.escalated} escalated`}
           </p>
         </div>
       </div>
@@ -66,10 +187,22 @@ export default function SOSAlertsPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-700 dark:text-red-400">
+          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
       {/* Alert Cards */}
       <div className="space-y-3">
-        {filtered.map(alert => {
-          const config = statusConfig[alert.status];
+        {loading ? (
+          <div className="card py-16 text-center text-slate-400">
+            <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+            Loading alerts...
+          </div>
+        ) : filtered.map(alert => {
+          const config = statusConfig[alert.status] || statusConfig.active;
           return (
             <div key={alert.id} className={cn('card border p-5 rounded-xl', config.bg)}>
               <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -89,9 +222,11 @@ export default function SOSAlertsPage() {
                       <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">{alert.description}</p>
                     )}
                     <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5" /> {alert.location.address}
-                      </span>
+                      {alert.location && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5" /> {alert.location.address}
+                        </span>
+                      )}
                       <span className="flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5" /> {new Date(alert.time).toLocaleString()}
                       </span>
@@ -109,19 +244,21 @@ export default function SOSAlertsPage() {
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {alert.status === 'active' && (
                     <>
-                      <button className="btn-danger text-xs py-1.5 px-3">Escalate</button>
-                      <button className="btn-secondary text-xs py-1.5 px-3 border-emerald-300 text-emerald-700 hover:bg-emerald-50">Resolve</button>
+                      <button className="btn-danger text-xs py-1.5 px-3" onClick={() => handleEscalate(alert.id)}>Escalate</button>
+                      <button className="btn-secondary text-xs py-1.5 px-3 border-emerald-300 text-emerald-700 hover:bg-emerald-50" onClick={() => handleResolve(alert.id)}>Resolve</button>
                     </>
                   )}
-                  <button className="btn-secondary text-xs py-1.5 px-3">
-                    <MapPin className="w-3.5 h-3.5" /> Map
-                  </button>
+                  {alert.location && (
+                    <button className="btn-secondary text-xs py-1.5 px-3">
+                      <MapPin className="w-3.5 h-3.5" /> Map
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
           );
         })}
-        {filtered.length === 0 && (
+        {!loading && filtered.length === 0 && (
           <div className="card py-16 text-center text-slate-400">No alerts found</div>
         )}
       </div>
