@@ -32,9 +32,13 @@ interface Doctor {
   specialty: string;
   rating: number | null;
   experience: string;
-  fee: string;
+  fee: string | null;
   address: string | null;
   image_url: string | null;
+  hospital: string | null;
+  phone: string | null;
+  email: string | null;
+  about: string | null;
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -98,9 +102,12 @@ export default function DoctorsPage() {
       specialty: '',
       experience: '',
       fee: '',
-      rating: 4.5,
       address: '',
       image_url: '',
+      hospital: '',
+      phone: '',
+      email: '',
+      about: '',
       is_active: true,
       sort_order: 0,
     });
@@ -122,9 +129,9 @@ export default function DoctorsPage() {
       !currentDoctor.name?.trim() ||
       !currentDoctor.specialty?.trim() ||
       !currentDoctor.experience?.trim() ||
-      !currentDoctor.fee?.trim()
+      !currentDoctor.hospital?.trim()
     ) {
-      setSaveError('Name, Specialty, Experience, and Fee are required');
+      setSaveError('Name, Specialty, Experience, and Hospital/Clinic are required');
       return;
     }
 
@@ -236,7 +243,8 @@ export default function DoctorsPage() {
                     </td>
                     <td className="table-cell">
                       <p className="text-sm text-slate-700 dark:text-slate-300">{doctor.experience}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">{doctor.fee}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Fee: {doctor.fee || '—'}</p>
+                      {doctor.phone && <p className="text-xs text-slate-400 dark:text-slate-500">{doctor.phone}</p>}
                     </td>
                     <td className="table-cell">
                       <div className="flex items-center gap-1">
@@ -246,8 +254,10 @@ export default function DoctorsPage() {
                         </span>
                       </div>
                     </td>
-                    <td className="table-cell text-sm text-slate-500 dark:text-slate-400 max-w-xs truncate">
-                      {doctor.address || '—'}
+                    <td className="table-cell text-sm text-slate-500 dark:text-slate-400 max-w-xs">
+                      {doctor.hospital && <p className="font-semibold text-slate-700 dark:text-slate-300 truncate">{doctor.hospital}</p>}
+                      {doctor.address && <p className="text-xs truncate">{doctor.address}</p>}
+                      {doctor.email && <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{doctor.email}</p>}
                     </td>
                     <td className="table-cell">
                       <StatusBadge status={doctor.is_active ? 'active' : 'inactive'} />
@@ -363,8 +373,30 @@ export default function DoctorsPage() {
                 placeholder="e.g. 12 years"
               />
               <Input
-                label="Consultation Fee *"
+                label="Hospital/Clinic Name *"
                 required
+                value={currentDoctor.hospital || ''}
+                onChange={(e) => setCurrentDoctor({ ...currentDoctor, hospital: e.target.value })}
+                placeholder="e.g. City General Hospital"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Input
+                label="Phone Contact"
+                value={currentDoctor.phone || ''}
+                onChange={(e) => setCurrentDoctor({ ...currentDoctor, phone: e.target.value })}
+                placeholder="e.g. +91 99999 99999"
+              />
+              <Input
+                label="Email Contact"
+                type="email"
+                value={currentDoctor.email || ''}
+                onChange={(e) => setCurrentDoctor({ ...currentDoctor, email: e.target.value })}
+                placeholder="e.g. dr.doe@hospital.com"
+              />
+              <Input
+                label="Consultation Fee"
                 value={currentDoctor.fee || ''}
                 onChange={(e) => setCurrentDoctor({ ...currentDoctor, fee: e.target.value })}
                 placeholder="e.g. $100"
@@ -419,10 +451,22 @@ export default function DoctorsPage() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                About (Biography)
+              </label>
+              <textarea
+                className="input-field h-16 resize-none"
+                value={currentDoctor.about || ''}
+                onChange={(e) => setCurrentDoctor({ ...currentDoctor, about: e.target.value })}
+                placeholder="Short biography or clinic specialization info..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                 Clinic Address
               </label>
               <textarea
-                className="input-field h-20 resize-none"
+                className="input-field h-16 resize-none"
                 value={currentDoctor.address || ''}
                 onChange={(e) => setCurrentDoctor({ ...currentDoctor, address: e.target.value })}
                 placeholder="Full address of clinic or hospital..."

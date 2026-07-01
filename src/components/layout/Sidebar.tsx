@@ -14,6 +14,7 @@ import {
   Cpu, Activity, Medal,
   Clock, Mail, Shield,
   UserCog, ShieldCheck, Key, ClipboardList,
+  Wind, Sparkles, Music,
 } from 'lucide-react';
 import { cn } from '../ui';
 import { useAuth } from '../../contexts/AuthContext';
@@ -58,6 +59,39 @@ const NAV_ITEMS: NavItem[] = [
     ],
   },
   {
+    id: 'health',
+    label: 'Health & Wellness',
+    icon: <Activity className="w-4 h-4" />,
+    children: [
+      { id: 'medicines', label: 'Medications', icon: <ScrollText className="w-4 h-4" />, path: '/health/medicines' },
+      { id: 'checkins', label: 'Daily Check-ins', icon: <ClipboardList className="w-4 h-4" />, path: '/health/checkins' },
+      { id: 'wellness', label: 'Wellness Metrics', icon: <Activity className="w-4 h-4" />, path: '/health/wellness' },
+      { id: 'conditions', label: 'Mood Logs', icon: <MessageSquare className="w-4 h-4" />, path: '/health/conditions' },
+      { id: 'vault', label: 'Health Vault', icon: <Shield className="w-4 h-4" />, path: '/health/vault' },
+    ],
+  },
+  {
+    id: 'care',
+    label: 'Care Circle',
+    icon: <Users2 className="w-4 h-4" />,
+    children: [
+      { id: 'doctors', label: 'Doctors Directory', icon: <UserCog className="w-4 h-4" />, path: '/care/doctors' },
+      { id: 'appointments', label: 'Appointments', icon: <Clock className="w-4 h-4" />, path: '/care/appointments' },
+      { id: 'calendar', label: 'Care Calendar', icon: <ClipboardList className="w-4 h-4" />, path: '/care/calendar' },
+      { id: 'family-events', label: 'Family Events', icon: <Users className="w-4 h-4" />, path: '/care/family-events' },
+    ],
+  },
+  {
+    id: 'emergency',
+    label: 'Emergency (SOS)',
+    icon: <Bell className="w-4 h-4" />,
+    children: [
+      { id: 'sos', label: 'SOS Alarm Logs', icon: <Bell className="w-4 h-4" />, path: '/emergency/sos' },
+      { id: 'incidents', label: 'Incident Reports', icon: <ScrollText className="w-4 h-4" />, path: '/emergency/incidents' },
+      { id: 'contacts', label: 'Emergency Contacts', icon: <Users className="w-4 h-4" />, path: '/emergency/contacts' },
+    ],
+  },
+  {
     id: 'subscriptions',
     label: 'Subscription & Payments',
     icon: <CreditCard className="w-4 h-4" />,
@@ -74,6 +108,10 @@ const NAV_ITEMS: NavItem[] = [
     icon: <Video className="w-4 h-4" />,
     children: [
       { id: 'videos', label: 'Video Management', icon: <Film className="w-4 h-4" />, path: '/content/videos' },
+      { id: 'breathing', label: 'Breathing Programs', icon: <Wind className="w-4 h-4" />, path: '/content/breathing' },
+      { id: 'mood-media', label: 'Mood Media', icon: <Music className="w-4 h-4" />, path: '/content/mood-media' },
+      { id: 'quizzes', label: 'Daily Quizzes', icon: <Trophy className="w-4 h-4" />, path: '/content/quizzes' },
+      { id: 'inspirations', label: 'Daily Inspirations', icon: <Sparkles className="w-4 h-4" />, path: '/content/inspirations' },
       { id: 'faqs', label: 'FAQ Management', icon: <HelpCircle className="w-4 h-4" />, path: '/content/faqs' },
     ],
   },

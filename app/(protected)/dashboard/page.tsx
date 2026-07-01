@@ -60,12 +60,12 @@ export default function DashboardPage() {
   const activeGuardians = stats ? stats.guardians : 0;
   const dailyActiveUsers = stats ? stats.check_ins_today : 0;
   const monthlyActiveUsers = stats ? (stats.elders + stats.guardians) : 0;
-  const sosTriggeredToday = stats ? stats.pending_invitations : 0; // proxy / fallback
-  const activeSubscriptions = stats ? stats.active_connections : 0;
-  const monthlyRevenue = stats ? (stats.active_connections * 1499) : 0;
-  const openSupportTickets = stats ? stats.pending_invitations : 0;
+  const sosTriggeredToday = stats && stats.sos_today !== undefined ? stats.sos_today : 0;
+  const activeSubscriptions = 0; // Phase 5
+  const monthlyRevenue = 0; // Phase 5
+  const openSupportTickets = 0; // Phase 4
   const totalAIRequestsToday = stats ? stats.ai_messages_today : 0;
-  const activeAIUsers = stats ? stats.moods_this_week : 0;
+  const activeAIUsers = 0; // Phase 5
 
   // Process growth data
   const growthData = analytics && analytics.user_growth
@@ -166,35 +166,31 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           title="Active Subscriptions"
-          value={loading ? '...' : activeSubscriptions.toLocaleString()}
-          change={11.3}
+          value="—"
           gradient="stat-card-gradient-indigo"
           icon={<CreditCard className="w-5 h-5" />}
-          subtitle="Paying users"
+          subtitle="Coming in Phase 5"
         />
         <StatCard
           title="Monthly Revenue"
-          value={loading ? '...' : `₹${(monthlyRevenue / 1000).toFixed(0)}K`}
-          change={9.7}
+          value="—"
           gradient="stat-card-gradient-purple"
           icon={<DollarSign className="w-5 h-5" />}
-          subtitle="This month"
+          subtitle="Coming in Phase 5"
         />
         <StatCard
           title="Open Support Tickets"
-          value={loading ? '...' : openSupportTickets.toString()}
-          change={-5.2}
+          value="—"
           gradient="stat-card-gradient-amber"
           icon={<Headphones className="w-5 h-5" />}
-          subtitle="Awaiting resolution"
+          subtitle="Coming in Phase 4"
         />
         <StatCard
           title="AI Requests Today"
           value={loading ? '...' : totalAIRequestsToday.toLocaleString()}
-          change={18.7}
           gradient="stat-card-gradient-rose"
           icon={<Bot className="w-5 h-5" />}
-          subtitle={loading ? 'Loading...' : `${activeAIUsers.toLocaleString()} active users`}
+          subtitle="Total requests today"
         />
       </div>
 
@@ -252,17 +248,9 @@ export default function DashboardPage() {
             Live
           </span>
         </div>
-        <div className="space-y-2">
-          {feed.map(item => (
-            <div
-              key={item.id}
-              className={cn('flex items-center gap-3 p-3 rounded-lg border text-sm', severityColors[item.severity || 'info'])}
-            >
-              <div className={cn('w-2 h-2 rounded-full flex-shrink-0', activityColors[item.type] || 'bg-slate-400')} />
-              <span className="flex-1 text-slate-700 dark:text-slate-300">{item.message}</span>
-              <span className="text-xs text-slate-400 dark:text-slate-500 flex-shrink-0">{item.time}</span>
-            </div>
-          ))}
+        <div className="flex flex-col items-center justify-center py-8 text-slate-400 dark:text-slate-500 text-sm">
+          <span className="mb-1">No recent activity logs available</span>
+          <span className="text-xs text-slate-400 opacity-80">Audit logging features will launch in Phase 5</span>
         </div>
       </div>
     </div>

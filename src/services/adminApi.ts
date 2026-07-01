@@ -332,12 +332,24 @@ export async function getAdminAIConversations(params?: { page?: number; limit?: 
   return adminFetch<any>(`/ai-conversations?${query.toString()}`);
 }
 
-export async function getAdminCareEvents(params?: { page?: number; limit?: number; type?: string }): Promise<any> {
+export async function getAdminCareEvents(params?: { page?: number; limit?: number; type?: string; user_id?: string }): Promise<any> {
   const query = new URLSearchParams();
   if (params?.page) query.set('page', String(params.page));
   if (params?.limit) query.set('limit', String(params.limit));
   if (params?.type) query.set('type', params.type);
+  if (params?.user_id) query.set('user_id', params.user_id);
   return adminFetch<any>(`/care-events?${query.toString()}`);
+}
+
+export async function createAdminCareEvent(data: any): Promise<any> {
+  return adminFetch<any>('/care-events', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteAdminCareEvent(id: string): Promise<any> {
+  return adminFetch<any>(`/care-events/${id}`, { method: 'DELETE' });
 }
 
 export async function getAdminMindGames(params?: { page?: number; limit?: number }): Promise<any> {
@@ -395,11 +407,12 @@ export async function deleteDoctor(id: string): Promise<any> {
 }
 
 // --- Mood Media CRUD ---
-export async function getMoodMedia(params?: { page?: number; limit?: number; category?: string }): Promise<any> {
+export async function getMoodMedia(params?: { page?: number; limit?: number; category?: string; search?: string }): Promise<any> {
   const query = new URLSearchParams();
   if (params?.page) query.set('page', String(params.page));
   if (params?.limit) query.set('limit', String(params.limit));
   if (params?.category) query.set('category', params.category);
+  if (params?.search?.trim()) query.set('search', params.search.trim());
   return adminFetch<any>(`/mood-media?${query.toString()}`);
 }
 
@@ -426,10 +439,11 @@ export async function deleteMoodMediaTrack(id: string): Promise<any> {
 }
 
 // --- Quiz Questions CRUD ---
-export async function getQuizQuestions(params?: { page?: number; limit?: number }): Promise<any> {
+export async function getQuizQuestions(params?: { page?: number; limit?: number; search?: string }): Promise<any> {
   const query = new URLSearchParams();
   if (params?.page) query.set('page', String(params.page));
   if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.search?.trim()) query.set('search', params.search.trim());
   return adminFetch<any>(`/quiz-questions?${query.toString()}`);
 }
 
@@ -456,10 +470,11 @@ export async function deleteQuizQuestion(id: string): Promise<any> {
 }
 
 // --- Inspirations CRUD ---
-export async function getInspirations(params?: { page?: number; limit?: number }): Promise<any> {
+export async function getInspirations(params?: { page?: number; limit?: number; search?: string }): Promise<any> {
   const query = new URLSearchParams();
   if (params?.page) query.set('page', String(params.page));
   if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.search?.trim()) query.set('search', params.search.trim());
   return adminFetch<any>(`/inspirations?${query.toString()}`);
 }
 
@@ -483,4 +498,26 @@ export async function updateInspiration(id: string, data: any): Promise<any> {
 
 export async function deleteInspiration(id: string): Promise<any> {
   return adminFetch<any>(`/inspirations/${id}`, { method: 'DELETE' });
+}
+
+// --- Health Records / Vault ---
+export async function getAdminHealthRecords(params?: { page?: number; limit?: number; category?: string; user_id?: string; search?: string }): Promise<any> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.category) query.set('category', params.category);
+  if (params?.user_id) query.set('user_id', params.user_id);
+  if (params?.search?.trim()) query.set('search', params.search.trim());
+  return adminFetch<any>(`/health-records?${query.toString()}`);
+}
+
+export async function deleteAdminHealthRecord(id: string): Promise<any> {
+  return adminFetch<any>(`/health-records/${id}`, { method: 'DELETE' });
+}
+
+export async function runMultiForecast(records: any[]): Promise<any> {
+  return adminFetch<any>('/ai-forecast-multi', {
+    method: 'POST',
+    body: JSON.stringify({ records }),
+  });
 }
