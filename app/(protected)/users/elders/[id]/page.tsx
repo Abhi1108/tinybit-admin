@@ -1,7 +1,8 @@
 import { UserProfileClient } from '@/src/components/users/UserProfileClient';
 
+// Required for `output: 'export'` dynamic routes — not product data.
 export function generateStaticParams() {
-  return [{ id: 'dummy' }];
+  return [{ id: '_' }];
 }
 
 export default function ElderProfilePage({ params }: { params: { id: string } }) {

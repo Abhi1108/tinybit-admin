@@ -2,20 +2,27 @@
 import React, { useState, useEffect } from 'react';
 import {
   Users, UserCheck, ShieldAlert, Bot,
-  Activity, CreditCard, DollarSign, Headphones, Loader2, AlertCircle
+  Activity, CreditCard, DollarSign, Headphones, Loader2, AlertCircle,
 } from 'lucide-react';
-import { StatCard } from '@/src/components/ui';
+import { StatCard, cn } from '@/src/components/ui';
 import { UserGrowthChart, SOSChart, AIUsageChart } from '@/src/components/charts';
-import { getAdminStats, getAdminAnalytics } from '@/src/services/adminApi';
-import { activityFeed } from '@/src/data/mockData';
-import { cn } from '@/src/components/ui';
+import { getAdminStats, getAdminAnalytics, getAuditLogs, type AuditLogEntry } from '@/src/services/adminApi';
 
-const activityColors: Record<string, string> = {
-  sos_triggered: 'bg-red-500',
-  elder_registered: 'bg-brand-500',
-  guardian_connected: 'bg-teal-500',
-  ai_session: 'bg-indigo-500',
-};
+function auditDotColor(action: string): string {
+  if (action.includes('failed') || action.includes('ban') || action.includes('purge') || action.includes('trash')) {
+    return 'bg-red-500';
+  }
+  if (action.startsWith('auth.')) return 'bg-emerald-500';
+  if (action.startsWith('user.')) return 'bg-brand-500';
+  if (action.startsWith('notification.')) return 'bg-indigo-500';
+  return 'bg-teal-500';
+}
+
+function auditSeverity(action: string): 'critical' | 'warning' | 'info' {
+  if (action.includes('failed') || action.includes('purge') || action.includes('ban')) return 'critical';
+  if (action.includes('trash') || action.includes('delete')) return 'warning';
+  return 'info';
+}
 
 const severityColors: Record<string, string> = {
   critical: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800',
@@ -23,27 +30,39 @@ const severityColors: Record<string, string> = {
   info: 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800',
 };
 
-const relevantActivityTypes = new Set(['sos_triggered', 'elder_registered', 'guardian_connected', 'ai_session']);
+function formatAuditLine(log: AuditLogEntry): string {
+  const d = log.details;
+  if (log.action === 'notification.broadcast' && d) {
+    return `"${d.title ?? ''}" broadcast to ${d.sent ?? '?'} user(s)`;
+  }
+  if (typeof d?.username === 'string' && d.username) {
+    return `${log.action} · ${d.username}`;
+  }
+  const label = d?.title ?? d?.name ?? d?.author;
+  if (typeof label === 'string' && label) {
+    return `${log.action} · ${label}`;
+  }
+  return log.target_id ? `${log.action} · ${log.target_type} #${log.target_id.slice(0, 8)}` : log.action;
+}
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null);
   const [analytics, setAnalytics] = useState<any>(null);
+  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [statsRes, analyticsRes] = await Promise.all([
+        const [statsRes, analyticsRes, logsRes] = await Promise.all([
           getAdminStats(),
           getAdminAnalytics(),
+          getAuditLogs({ limit: 10 }),
         ]);
-        if (statsRes) {
-          setStats(statsRes);
-        }
-        if (analyticsRes) {
-          setAnalytics(analyticsRes);
-        }
+        if (statsRes) setStats(statsRes);
+        if (analyticsRes) setAnalytics(analyticsRes);
+        setLogs(logsRes.logs || []);
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch dashboard data');
@@ -61,22 +80,19 @@ export default function DashboardPage() {
   const dailyActiveUsers = stats ? stats.check_ins_today : 0;
   const monthlyActiveUsers = stats ? (stats.elders + stats.guardians) : 0;
   const sosTriggeredToday = stats && stats.sos_today !== undefined ? stats.sos_today : 0;
-  const activeSubscriptions = 0; // Phase 5
-  const monthlyRevenue = 0; // Phase 5
-  const openSupportTickets = 0; // Phase 4
+  const activeSubscriptions = stats?.active_subscriptions ?? 0;
+  const monthlyRevenue = stats?.month_revenue ?? 0;
   const totalAIRequestsToday = stats ? stats.ai_messages_today : 0;
-  const activeAIUsers = 0; // Phase 5
+  const activeAIUsers = stats?.active_ai_users ?? 0;
 
-  // Process growth data
   const growthData = analytics && analytics.user_growth
     ? analytics.user_growth.labels.map((label: string, index: number) => ({
-        name: label.slice(5), // MM-DD
+        name: label.slice(5),
         elders: analytics.user_growth.data[index] || 0,
         guardians: Math.round((analytics.user_growth.data[index] || 0) * 0.8),
       }))
     : [];
 
-  // Process SOS trends (mapped using ai_by_day scaled or check_in_dow as active trends)
   const sosData = analytics && analytics.ai_by_day
     ? analytics.ai_by_day.labels.map((label: string, index: number) => {
         const val = analytics.ai_by_day.data[index] || 0;
@@ -90,24 +106,17 @@ export default function DashboardPage() {
       })
     : [];
 
-  // Process AI usage weekly trends
   const aiUsage = analytics && analytics.ai_by_day
-    ? analytics.ai_by_day.labels.map((label: string, index: number) => {
-        const total = analytics.ai_by_day.data[index] || 0;
-        return {
-          name: label.slice(5),
-          chat: Math.round(total * 0.6),
-          voice: Math.round(total * 0.4),
-          tokens: total * 1500,
-        };
-      })
+    ? analytics.ai_by_day.labels.map((label: string, index: number) => ({
+        name: label.slice(5),
+        tokens: Number(analytics.ai_by_day.tokens?.[index]) || 0,
+        prompt: Number(analytics.ai_by_day.prompt_tokens?.[index]) || 0,
+        completion: Number(analytics.ai_by_day.completion_tokens?.[index]) || 0,
+      }))
     : [];
-
-  const feed = activityFeed.filter(item => relevantActivityTypes.has(item.type));
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Dashboard</h1>
@@ -126,7 +135,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* KPI Grid — Row 1 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           title="Total Elders"
@@ -162,39 +170,37 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* KPI Grid — Row 2 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           title="Active Subscriptions"
-          value="—"
+          value={loading ? '...' : activeSubscriptions.toLocaleString()}
           gradient="stat-card-gradient-indigo"
           icon={<CreditCard className="w-5 h-5" />}
-          subtitle="Coming in Phase 5"
+          subtitle="Guardians on active plan"
         />
         <StatCard
           title="Monthly Revenue"
-          value="—"
+          value={loading ? '...' : `₹${Number(monthlyRevenue).toLocaleString('en-IN')}`}
           gradient="stat-card-gradient-purple"
           icon={<DollarSign className="w-5 h-5" />}
-          subtitle="Coming in Phase 5"
+          subtitle="Captured this month"
         />
         <StatCard
           title="Open Support Tickets"
           value="—"
           gradient="stat-card-gradient-amber"
           icon={<Headphones className="w-5 h-5" />}
-          subtitle="Coming in Phase 4"
+          subtitle="No ticketing system yet"
         />
         <StatCard
           title="AI Requests Today"
           value={loading ? '...' : totalAIRequestsToday.toLocaleString()}
           gradient="stat-card-gradient-rose"
           icon={<Bot className="w-5 h-5" />}
-          subtitle="Total requests today"
+          subtitle={loading ? 'Loading...' : `${activeAIUsers.toLocaleString()} active users`}
         />
       </div>
 
-      {/* Charts Row 1 */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className="card p-5">
           <div className="flex items-center justify-between mb-4">
@@ -224,34 +230,62 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Charts Row 2 */}
       <div className="card p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="section-title">AI Usage</h2>
-          <span className="text-xs text-slate-500 dark:text-slate-400">This week</span>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="section-title">AI Tokens</h2>
+          <span className="text-xs text-slate-500 dark:text-slate-400">This week · click legend to toggle</span>
         </div>
         {loading ? (
-          <div className="flex items-center justify-center h-[220px]">
+          <div className="flex items-center justify-center h-[260px]">
             <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
           </div>
         ) : (
-          <AIUsageChart data={aiUsage} />
+          <AIUsageChart data={aiUsage} height={260} showBrush={false} />
         )}
       </div>
 
-      {/* Activity Feed */}
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="section-title">Live Activity Feed</h2>
           <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
             <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-            Live
+            Admin audit log
           </span>
         </div>
-        <div className="flex flex-col items-center justify-center py-8 text-slate-400 dark:text-slate-500 text-sm">
-          <span className="mb-1">No recent activity logs available</span>
-          <span className="text-xs text-slate-400 opacity-80">Audit logging features will launch in Phase 5</span>
-        </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-8 text-slate-400 gap-2">
+            <Loader2 className="w-5 h-5 animate-spin" /> Loading…
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-slate-400 dark:text-slate-500 text-sm">
+            <span>No recent admin activity</span>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {logs.map((log) => {
+              const severity = auditSeverity(log.action);
+              return (
+                <div
+                  key={log.id}
+                  className={cn('flex items-start gap-3 rounded-xl border px-4 py-3', severityColors[severity])}
+                >
+                  <span className={cn('mt-1.5 w-2 h-2 rounded-full flex-shrink-0', auditDotColor(log.action))} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
+                      {formatAuditLine(log)}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      {log.actor}
+                      {log.ip ? ` · ${log.ip}` : ''}
+                      {' · '}
+                      {log.created_at ? new Date(log.created_at).toLocaleString() : '—'}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

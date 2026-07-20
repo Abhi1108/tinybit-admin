@@ -1,8 +1,9 @@
 'use client';
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis,
+  ComposedChart, Brush,
 } from 'recharts';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -128,30 +129,124 @@ export function SOSChart({ data }: { data: Record<string, unknown>[] }) {
   );
 }
 
-// ── AI Usage ─────────────────────────────────────────────────────────────────
-export function AIUsageChart({ data }: { data: Record<string, unknown>[] }) {
+// ── AI Usage (tokens only) ───────────────────────────────────────────────────
+type AIUsagePoint = {
+  name: string;
+  tokens?: number;
+  prompt?: number;
+  completion?: number;
+};
+
+export function AIUsageChart({
+  data,
+  height = 280,
+  showBrush = true,
+}: {
+  data: AIUsagePoint[];
+  height?: number;
+  showBrush?: boolean;
+}) {
   const theme = useChartTheme();
+  const [hidden, setHidden] = useState<Record<string, boolean>>({});
+
+  const chartData = useMemo(
+    () =>
+      data.map((d) => ({
+        name: d.name,
+        prompt: Number(d.prompt) || 0,
+        completion: Number(d.completion) || 0,
+        tokens: Number(d.tokens) || 0,
+      })),
+    [data],
+  );
+
+  const toggleSeries = (dataKey: string) => {
+    setHidden((prev) => ({ ...prev, [dataKey]: !prev[dataKey] }));
+  };
+
   return (
-    <ResponsiveContainer width="100%" height={220}>
-      <AreaChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+    <ResponsiveContainer width="100%" height={height}>
+      <ComposedChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: showBrush ? 8 : 0 }}>
         <defs>
-          <linearGradient id="colorChat" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-            <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+          <linearGradient id="colorPromptTokens" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#0d9488" stopOpacity={0.9} />
+            <stop offset="95%" stopColor="#0d9488" stopOpacity={0.55} />
           </linearGradient>
-          <linearGradient id="colorVoice" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3} />
-            <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+          <linearGradient id="colorCompletionTokens" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#0284c7" stopOpacity={0.9} />
+            <stop offset="95%" stopColor="#0284c7" stopOpacity={0.55} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke={theme.gridColor} />
+        <CartesianGrid strokeDasharray="3 3" stroke={theme.gridColor} vertical={false} />
         <XAxis dataKey="name" tick={{ fill: theme.textColor, fontSize: 11 }} axisLine={false} tickLine={false} />
-        <YAxis tick={{ fill: theme.textColor, fontSize: 11 }} axisLine={false} tickLine={false} />
-        <Tooltip content={<CustomTooltip />} />
-        <Legend iconSize={8} wrapperStyle={{ fontSize: 12 }} />
-        <Area type="monotone" dataKey="chat" stroke="#6366f1" strokeWidth={2} fill="url(#colorChat)" name="Chat Sessions" dot={false} />
-        <Area type="monotone" dataKey="voice" stroke="#f43f5e" strokeWidth={2} fill="url(#colorVoice)" name="Voice Sessions" dot={false} />
-      </AreaChart>
+        <YAxis
+          tick={{ fill: theme.textColor, fontSize: 11 }}
+          axisLine={false}
+          tickLine={false}
+          width={56}
+          tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : String(v))}
+        />
+        <Tooltip
+          cursor={{ fill: theme.gridColor, opacity: 0.55 }}
+          content={<CustomTooltip formatter={(v) => `${Number(v).toLocaleString()} tokens`} />}
+        />
+        <Legend
+          iconSize={8}
+          wrapperStyle={{ fontSize: 12, cursor: 'pointer' }}
+          onClick={(e) => {
+            const key = String((e as { dataKey?: string }).dataKey || '');
+            if (key) toggleSeries(key);
+          }}
+          formatter={(value, entry) => {
+            const key = String((entry as { dataKey?: string }).dataKey || '');
+            const isHidden = Boolean(hidden[key]);
+            return (
+              <span style={{ opacity: isHidden ? 0.35 : 1, textDecoration: isHidden ? 'line-through' : 'none' }}>
+                {value}
+              </span>
+            );
+          }}
+        />
+        <Bar
+          dataKey="prompt"
+          name="Prompt"
+          stackId="tokens"
+          fill="url(#colorPromptTokens)"
+          radius={[0, 0, 0, 0]}
+          maxBarSize={36}
+          hide={hidden.prompt}
+          activeBar={{ stroke: '#0f766e', strokeWidth: 1 }}
+        />
+        <Bar
+          dataKey="completion"
+          name="Completion"
+          stackId="tokens"
+          fill="url(#colorCompletionTokens)"
+          radius={[4, 4, 0, 0]}
+          maxBarSize={36}
+          hide={hidden.completion}
+          activeBar={{ stroke: '#0369a1', strokeWidth: 1 }}
+        />
+        <Line
+          type="monotone"
+          dataKey="tokens"
+          name="Total"
+          stroke="#6366f1"
+          strokeWidth={2.5}
+          dot={{ r: 3, fill: '#6366f1', strokeWidth: 0 }}
+          activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }}
+          hide={hidden.tokens}
+        />
+        {showBrush && chartData.length > 3 && (
+          <Brush
+            dataKey="name"
+            height={22}
+            stroke="#94a3b8"
+            fill={theme.gridColor}
+            travellerWidth={8}
+          />
+        )}
+      </ComposedChart>
     </ResponsiveContainer>
   );
 }

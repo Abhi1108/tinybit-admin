@@ -113,6 +113,15 @@ export interface UpdateUserPayload {
 }
 
 const TOKEN_KEY = 'tb-admin-token';
+const USER_KEY = 'tb-admin-user';
+
+type AuthExpiredHandler = () => void;
+let onAuthExpired: AuthExpiredHandler | null = null;
+
+/** Called by AuthProvider so API 401s can clear React auth state. */
+export function setAuthExpiredHandler(handler: AuthExpiredHandler | null) {
+  onAuthExpired = handler;
+}
 
 export function getAdminToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -123,6 +132,20 @@ export function setAdminToken(token: string | null) {
   if (typeof window === 'undefined') return;
   if (token) sessionStorage.setItem(TOKEN_KEY, token);
   else sessionStorage.removeItem(TOKEN_KEY);
+}
+
+function clearLocalSession() {
+  setAdminToken(null);
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem(USER_KEY);
+  }
+}
+
+function notifySessionExpired(path: string) {
+  // Login failures are not a lost session.
+  if (path === '/login') return;
+  clearLocalSession();
+  onAuthExpired?.();
 }
 
 async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -139,6 +162,10 @@ async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T
     ...options,
     headers,
   });
+
+  if (res.status === 401) {
+    notifySessionExpired(path);
+  }
 
   const contentType = res.headers.get('content-type') ?? '';
   if (contentType.includes('text/csv')) {

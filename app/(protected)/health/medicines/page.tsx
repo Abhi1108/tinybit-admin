@@ -1,17 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, AlertCircle, Loader2 } from 'lucide-react';
-import { Badge, Pagination, ProgressBar, cn } from '@/src/components/ui';
+import { Badge, Pagination, cn } from '@/src/components/ui';
 import { getAdminMedicines } from '@/src/services/adminApi';
-
-function stableHash(str: string): number {
-  let hash = 0;
-  if (!str) return hash;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return Math.abs(hash);
-}
 
 export default function MedicinesPage() {
   const [search, setSearch] = useState('');
@@ -72,10 +63,10 @@ export default function MedicinesPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total Medicines', value: medsList.length, color: 'text-brand-600', bg: 'bg-brand-50 dark:bg-brand-900/20' },
-          { label: 'High Adherence (>90%)', value: medsList.filter(m => (stableHash(m.id) % 30 + 70) >= 90).length, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-          { label: 'Low Adherence (<70%)', value: medsList.filter(m => (stableHash(m.id) % 30 + 70) < 70).length, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-900/20' },
-          { label: 'Refill Needed', value: medsList.filter(m => (m.stock || 0) <= 5).length, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+          { label: 'Total Medicines', value: loading ? '—' : medsList.length, color: 'text-brand-600', bg: 'bg-brand-50 dark:bg-brand-900/20' },
+          { label: 'High Adherence (>90%)', value: '—', color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+          { label: 'Low Adherence (<70%)', value: '—', color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-900/20' },
+          { label: 'Refill Needed', value: loading ? '—' : medsList.filter(m => (m.stock || 0) <= 5).length, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/20' },
         ].map(s => (
           <div key={s.label} className={cn('card p-4 rounded-xl', s.bg)}>
             <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
@@ -124,10 +115,8 @@ export default function MedicinesPage() {
                 </tr>
               ) : (
                 paginated.map(med => {
-                  const adherence = stableHash(med.id) % 30 + 70; // 70 to 99% stable mock
-                  const dosage = med.dosage || '500mg';
-                  const prescribedBy = med.prescribed_by || 'Dr. Sharma';
-                  const schedule = med.schedule_time || 'Once daily';
+                  const dosage = med.dosage || med.category || '—';
+                  const schedule = med.schedule_time || med.frequency || '—';
                   const refillStatus = med.stock === 0 ? 'empty' : (med.stock || 0) <= 5 ? 'low' : 'ok';
                   const status = med.is_active ? 'active' : 'inactive';
 
@@ -135,21 +124,16 @@ export default function MedicinesPage() {
                     <tr key={med.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                       <td className="table-cell">
                         <p className="font-medium text-slate-900 dark:text-white text-sm">{med.name}</p>
-                        <p className="text-xs text-slate-500">{dosage} · {med.frequency}</p>
+                        <p className="text-xs text-slate-500">{dosage}{med.frequency ? ` · ${med.frequency}` : ''}</p>
                       </td>
                       <td className="table-cell">
-                        <p className="text-sm">{med.user_name}</p>
-                        <p className="text-xs text-slate-500">{prescribedBy}</p>
+                        <p className="text-sm">{med.user_name || '—'}</p>
+                        <p className="text-xs text-slate-500">{med.prescribed_by || '—'}</p>
                       </td>
                       <td className="table-cell text-sm text-slate-600 dark:text-slate-400">{schedule}</td>
-                      <td className="table-cell">
-                        <div className="flex items-center gap-2 min-w-28">
-                          <ProgressBar value={adherence} max={100} size="sm" color={adherence >= 90 ? 'green' : adherence >= 70 ? 'amber' : 'red'} />
-                          <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 w-8 text-right">{adherence}%</span>
-                        </div>
-                      </td>
-                      <td className="table-cell text-xs text-slate-500">{med.schedule_time || '08:30 AM'}</td>
-                      <td className="table-cell text-xs text-slate-500">{med.schedule_time ? `${med.schedule_time} (tomorrow)` : '08:30 PM'}</td>
+                      <td className="table-cell text-xs text-slate-500">—</td>
+                      <td className="table-cell text-xs text-slate-500">—</td>
+                      <td className="table-cell text-xs text-slate-500">—</td>
                       <td className="table-cell">
                         <Badge variant={refillVariants[refillStatus]} size="sm">{refillStatus}</Badge>
                       </td>

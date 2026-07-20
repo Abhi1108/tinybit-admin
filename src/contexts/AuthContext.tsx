@@ -1,7 +1,13 @@
 'use client';
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { AdminUser } from '../types';
-import { adminLogin, adminLogout, getAdminToken, setAdminToken } from '../services/adminApi';
+import {
+  adminLogin,
+  adminLogout,
+  getAdminToken,
+  setAdminToken,
+  setAuthExpiredHandler,
+} from '../services/adminApi';
 
 interface AuthContextType {
   user: AdminUser | null;
@@ -47,6 +53,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     return null;
   });
+
+  useEffect(() => {
+    setAuthExpiredHandler(() => {
+      setUser(null);
+    });
+    return () => setAuthExpiredHandler(null);
+  }, []);
 
   const login = async (username: string, password: string): Promise<boolean> => {
     const result = await adminLogin(username, password);
