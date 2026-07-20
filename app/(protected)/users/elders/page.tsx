@@ -1,7 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { Search, Loader2, AlertCircle, Download, UserPlus } from 'lucide-react';
-import { Avatar, StatusBadge, Pagination, Badge } from '@/src/components/ui';
+import { Avatar, StatusBadge, Pagination, Badge, Tabs } from '@/src/components/ui';
 import { useUserList } from '@/src/hooks/useUserList';
 import { UserRowActions } from '@/src/components/users/UserRowActions';
 import { UserFormModal } from '@/src/components/users/UserFormModal';
@@ -19,11 +19,13 @@ import {
 
 export default function EldersPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
+  const [view, setView] = useState<'active' | 'trash'>('active');
   const [showCreate, setShowCreate] = useState(false);
   const [exporting, setExporting] = useState(false);
   const { users, total, page, setPage, search, setSearch, loading, error, pageSize, refetch } = useUserList({
     role: 'elder',
     status: statusFilter,
+    deleted: view === 'trash' ? 'only' : undefined,
     pageSize: 20,
   });
 
@@ -57,6 +59,15 @@ export default function EldersPage() {
           </button>
         </div>
       </div>
+
+      <Tabs
+        tabs={[
+          { id: 'active', label: 'Elders' },
+          { id: 'trash', label: 'Trash' },
+        ]}
+        active={view}
+        onChange={(id) => setView(id as 'active' | 'trash')}
+      />
 
       <div className="card p-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 flex-1 min-w-64 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2">
@@ -97,7 +108,11 @@ export default function EldersPage() {
                 <th className="table-header">Age / Country</th>
                 <th className="table-header">Guardians</th>
                 <th className="table-header">Status</th>
-                <th className="table-header">Last Active</th>
+                {view === 'trash' ? (
+                  <th className="table-header">Deleted</th>
+                ) : (
+                  <th className="table-header">Last Active</th>
+                )}
                 <th className="table-header">Joined</th>
                 <th className="table-header rounded-tr-xl">Actions</th>
               </tr>
@@ -135,9 +150,16 @@ export default function EldersPage() {
                       <td className="table-cell">
                         <StatusBadge status={profileStatus(elder.is_banned)} />
                       </td>
-                      <td className="table-cell text-xs text-slate-500 dark:text-slate-400">
-                        {formatLastActive(elder.last_active)}
-                      </td>
+                      {view === 'trash' ? (
+                        <td className="table-cell text-xs text-slate-500 dark:text-slate-400">
+                          {formatLastActive(elder.deleted_at)}
+                          {elder.deleted_by ? <span className="block">by {elder.deleted_by}</span> : null}
+                        </td>
+                      ) : (
+                        <td className="table-cell text-xs text-slate-500 dark:text-slate-400">
+                          {formatLastActive(elder.last_active)}
+                        </td>
+                      )}
                       <td className="table-cell text-xs text-slate-500 dark:text-slate-400">
                         {formatJoined(elder.created_at)}
                       </td>
@@ -156,7 +178,9 @@ export default function EldersPage() {
           </table>
         </div>
         {!loading && total === 0 && (
-          <div className="py-16 text-center text-slate-400 dark:text-slate-500">No elders found.</div>
+          <div className="py-16 text-center text-slate-400 dark:text-slate-500">
+            {view === 'trash' ? 'Trash is empty.' : 'No elders found.'}
+          </div>
         )}
         {!loading && total > pageSize && (
           <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800">

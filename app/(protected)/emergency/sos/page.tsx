@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, MapPin, Clock, User, Phone, CheckCircle, AlertTriangle, XCircle, Search, Loader2, AlertCircle } from 'lucide-react';
-import { Badge, SeverityBadge, StatusBadge, cn } from '@/src/components/ui';
-import { getAdminCheckIns, getAdminMoods } from '@/src/services/adminApi';
+import { Badge, SeverityBadge, cn } from '@/src/components/ui';
+import { getAdminSosAlerts, type SosAlertRecord } from '@/src/services/adminApi';
 
 interface SOSAlert {
   id: string;
@@ -19,6 +19,29 @@ interface SOSAlert {
   description?: string;
   resolvedAt?: string;
   resolvedBy?: string;
+}
+
+function mapSosRecord(a: SosAlertRecord): SOSAlert {
+  const uiStatus: SOSAlert['status'] =
+    a.status === 'cancelled' ? 'false_alarm' : a.status === 'resolved' ? 'resolved' : 'active';
+  return {
+    id: a.id,
+    elderName: a.user_name || 'Elder',
+    elderId: a.user_id,
+    guardianName: '—',
+    guardianId: '',
+    time: a.triggered_at,
+    location: {
+      lat: a.location?.latitude ?? 0,
+      lng: a.location?.longitude ?? 0,
+      address: a.location?.address || (a.location ? `${a.location.latitude.toFixed(4)}, ${a.location.longitude.toFixed(4)}` : 'Location unavailable'),
+    },
+    status: uiStatus,
+    severity: a.status === 'active' ? 'critical' : 'medium',
+    description: `SOS alert · status ${a.status}`,
+    resolvedAt: a.resolved_at || undefined,
+    resolvedBy: a.resolved_at ? 'System' : undefined,
+  };
 }
 
 const statusConfig = {
@@ -39,81 +62,16 @@ export default function SOSAlertsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [checkinsRes, moodsRes] = await Promise.all([
-        getAdminCheckIns({ limit: 100 }),
-        getAdminMoods({ limit: 100 }),
-      ]);
-
-      const checkinsList = checkinsRes.success ? (checkinsRes.check_ins || []) : [];
-      const moodsList = moodsRes.success ? (moodsRes.moods || []) : [];
-
-      const mappedAlerts: SOSAlert[] = [];
-
-      // Map check-ins with high pain or low mood score to alerts
-      checkinsList.forEach((c: any) => {
-        const hasHighPain = c.pain_level !== null && c.pain_level >= 6;
-        const hasLowMood = c.mood_score !== null && c.mood_score <= 2;
-        const painReported = c.pain_reported === 1 || c.pain_reported === true;
-
-        if (hasHighPain || hasLowMood || painReported) {
-          const isCritical = (c.pain_level !== null && c.pain_level >= 8) || (c.mood_score !== null && c.mood_score === 1);
-          mappedAlerts.push({
-            id: c.id,
-            elderName: c.user_name || 'Elder',
-            elderId: c.user_id,
-            guardianName: c.user_name ? `Guardian of ${c.user_name}` : 'Primary Guardian',
-            guardianId: `g-${c.user_id}`,
-            time: c.created_at || c.check_in_date,
-            location: { lat: 19.076, lng: 72.877, address: 'Residence (GPS Auto-logged)' },
-            status: isCritical ? 'active' : 'resolved',
-            severity: isCritical ? 'critical' : 'high',
-            description: c.notes || `Daily Check-in report: Pain level ${c.pain_level || 0}/10, Mood: ${c.mood || '—'}.`,
-          });
-        }
-      });
-
-      // Map Mood entries with critical issues
-      moodsList.forEach((m: any) => {
-        const hasLowMood = m.mood_score !== null && m.mood_score <= 2;
-        const mentionsEmergency = m.note && /pain|hurt|fell|emergency|sick|doctor|sos|alert/i.test(m.note);
-
-        if (hasLowMood || mentionsEmergency) {
-          const isCritical = m.mood_score === 1 || mentionsEmergency;
-          // Avoid duplicate alerts for the same event by checking ID
-          if (!mappedAlerts.some(a => a.id === m.id)) {
-            mappedAlerts.push({
-              id: m.id,
-              elderName: m.user_name || 'Elder',
-              elderId: m.user_id,
-              guardianName: 'Primary Guardian',
-              guardianId: `g-${m.user_id}`,
-              time: m.created_at,
-              location: { lat: 28.644, lng: 77.216, address: 'Residence (GPS Auto-logged)' },
-              status: isCritical ? 'active' : 'resolved',
-              severity: isCritical ? 'critical' : 'medium',
-              description: m.note || `Self-reported Mood score: ${m.mood_score || 0}/5, Mood: ${m.mood || '—'}.`,
-            });
-          }
-        }
-      });
-
-      // Sort by time descending
-      mappedAlerts.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
-
-      // If we don't have any dynamic alerts from check-ins/moods (e.g. database is fresh),
-      // we can load from mock SOS alerts so the system displays some active events.
-      if (mappedAlerts.length === 0) {
-        const { sosAlerts } = require('@/src/data/mockData');
-        setAlerts(sosAlerts);
+      const res = await getAdminSosAlerts({ limit: 100 });
+      if (res.success) {
+        setAlerts((res.alerts || []).map(mapSosRecord));
       } else {
-        setAlerts(mappedAlerts);
+        setError(res.error || 'Failed to fetch SOS alerts');
+        setAlerts([]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch emergency reports');
-      try {
-        const { sosAlerts } = require('@/src/data/mockData');
-        setAlerts(sosAlerts);
-      } catch {}
+      setError(err instanceof Error ? err.message : 'Failed to fetch SOS alerts');
+      setAlerts([]);
     } finally {
       setLoading(false);
     }

@@ -16,6 +16,8 @@ export interface AdminProfileUser {
   is_banned: boolean;
   last_active: string | null;
   created_at: string;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
   guardian_count?: number;
   linked_elder_count?: number;
   profile_incomplete?: boolean;
@@ -177,6 +179,8 @@ export interface GetUsersParams {
   role?: 'elder' | 'guardian' | 'caregiver';
   search?: string;
   status?: 'all' | 'active' | 'suspended';
+  /** 'only' lists trashed (soft-deleted) users; omitted/undefined excludes them (server default). */
+  deleted?: 'only';
   page?: number;
   limit?: number;
 }
@@ -188,6 +192,7 @@ export async function getAdminUsers(params: GetUsersParams): Promise<AdminUsersR
   query.set('limit', String(params.limit ?? 20));
   if (params.search?.trim()) query.set('search', params.search.trim());
   if (params.status && params.status !== 'all') query.set('status', params.status);
+  if (params.deleted === 'only') query.set('deleted', 'only');
   return adminFetch<AdminUsersResponse>(`/users?${query.toString()}`);
 }
 
@@ -220,8 +225,22 @@ export async function banAdminUser(id: string, banned: boolean) {
   });
 }
 
+/** Moves a user to trash (soft-delete) — recoverable via restoreAdminUser until the grace period elapses. */
 export async function deleteAdminUser(id: string) {
   return adminFetch<{ success: boolean }>(`/users/${id}`, { method: 'DELETE' });
+}
+
+/** Restores a trashed user back to normal/active state. 404s if the user isn't currently trashed. */
+export async function restoreAdminUser(id: string) {
+  return adminFetch<{ success: boolean }>(`/users/${id}/restore`, { method: 'PATCH' });
+}
+
+/** Permanently deletes an already-trashed user: real S3 cleanup + cascading DB delete. Irreversible. */
+export async function purgeAdminUser(id: string) {
+  return adminFetch<{ success: boolean; deletedObjectCount: number; s3Failures: unknown[] }>(
+    `/users/${id}/purge`,
+    { method: 'DELETE' },
+  );
 }
 
 export async function getAdminConnections(params: {
@@ -365,6 +384,45 @@ export async function broadcastMessage(message: string, title?: string): Promise
     method: 'POST',
     body: JSON.stringify({ title: title || 'System Broadcast', body: message }),
   });
+}
+
+// --- Audit log ---
+
+export interface AuditLogEntry {
+  id: string;
+  actor: string;
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  details: Record<string, unknown> | null;
+  ip: string | null;
+  created_at: string;
+}
+
+export interface AuditLogsResponse {
+  success: boolean;
+  logs: AuditLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export async function getAuditLogs(params?: {
+  page?: number;
+  limit?: number;
+  action?: string;
+  search?: string;
+}): Promise<AuditLogsResponse> {
+  const query = new URLSearchParams();
+  query.set('page', String(params?.page ?? 1));
+  query.set('limit', String(params?.limit ?? 50));
+  if (params?.action) query.set('action', params.action);
+  if (params?.search?.trim()) query.set('search', params.search.trim());
+  return adminFetch<AuditLogsResponse>(`/audit-log?${query.toString()}`);
+}
+
+export async function exportAuditLogs(): Promise<string> {
+  return adminFetch<string>('/audit-log/export');
 }
 
 // --- Catalog Storage Presign Upload ---
@@ -520,4 +578,378 @@ export async function runMultiForecast(records: any[]): Promise<any> {
     method: 'POST',
     body: JSON.stringify({ records }),
   });
+}
+
+// --- Help FAQs CRUD ---
+export interface HelpFaq {
+  id: string;
+  question: string;
+  answer: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getHelpFaqs(params?: { page?: number; limit?: number; active?: string; search?: string }): Promise<{ success: boolean; faqs: HelpFaq[]; error?: string }> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.active !== undefined) query.set('active', params.active);
+  if (params?.search?.trim()) query.set('search', params.search.trim());
+  return adminFetch(`/help-faqs?${query.toString()}`);
+}
+
+export async function getHelpFaq(id: string): Promise<{ success: boolean; faq: HelpFaq; error?: string }> {
+  return adminFetch(`/help-faqs/${id}`);
+}
+
+export async function createHelpFaq(data: { question: string; answer: string; sort_order?: number; is_active?: boolean }): Promise<{ success: boolean; faq: HelpFaq; error?: string }> {
+  return adminFetch('/help-faqs', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateHelpFaq(id: string, data: Partial<{ question: string; answer: string; sort_order: number; is_active: boolean }>): Promise<{ success: boolean; faq: HelpFaq; error?: string }> {
+  return adminFetch(`/help-faqs/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export async function deleteHelpFaq(id: string): Promise<{ success: boolean; error?: string }> {
+  return adminFetch(`/help-faqs/${id}`, { method: 'DELETE' });
+}
+
+// --- Help Tutorials CRUD ---
+export interface HelpTutorial {
+  id: string;
+  category: string;
+  title: string;
+  description: string | null;
+  video_url: string | null;
+  thumbnail_url: string | null;
+  difficulty: string;
+  duration_seconds: number | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getHelpTutorials(params?: { page?: number; limit?: number; category?: string; active?: string; search?: string }): Promise<{ success: boolean; tutorials: HelpTutorial[]; error?: string }> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.category) query.set('category', params.category);
+  if (params?.active !== undefined) query.set('active', params.active);
+  if (params?.search?.trim()) query.set('search', params.search.trim());
+  return adminFetch(`/help-tutorials?${query.toString()}`);
+}
+
+export async function getHelpTutorial(id: string): Promise<{ success: boolean; tutorial: HelpTutorial; error?: string }> {
+  return adminFetch(`/help-tutorials/${id}`);
+}
+
+export async function createHelpTutorial(data: Record<string, unknown>): Promise<{ success: boolean; tutorial: HelpTutorial; error?: string }> {
+  return adminFetch('/help-tutorials', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateHelpTutorial(id: string, data: Record<string, unknown>): Promise<{ success: boolean; tutorial: HelpTutorial; error?: string }> {
+  return adminFetch(`/help-tutorials/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export async function deleteHelpTutorial(id: string): Promise<{ success: boolean; error?: string }> {
+  return adminFetch(`/help-tutorials/${id}`, { method: 'DELETE' });
+}
+
+// --- Pricing tiers CRUD ---
+export interface PricingTier {
+  id: string;
+  country_code: string;
+  elder_count: number;
+  amount: number;
+  currency: string;
+  interval_days: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getPricingTiers(params?: { country_code?: string; active?: string }): Promise<{ success: boolean; tiers: PricingTier[]; error?: string }> {
+  const query = new URLSearchParams();
+  if (params?.country_code) query.set('country_code', params.country_code);
+  if (params?.active !== undefined) query.set('active', params.active);
+  return adminFetch(`/pricing-tiers?${query.toString()}`);
+}
+
+export async function getPricingTier(id: string): Promise<{ success: boolean; tier: PricingTier; error?: string }> {
+  return adminFetch(`/pricing-tiers/${id}`);
+}
+
+export async function createPricingTier(data: {
+  country_code: string;
+  elder_count: number;
+  amount: number;
+  currency: string;
+  interval_days?: number;
+  is_active?: boolean;
+}): Promise<{ success: boolean; tier: PricingTier; error?: string }> {
+  return adminFetch('/pricing-tiers', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updatePricingTier(id: string, data: Partial<{
+  country_code: string;
+  elder_count: number;
+  amount: number;
+  currency: string;
+  interval_days: number;
+  is_active: boolean;
+}>): Promise<{ success: boolean; tier: PricingTier; error?: string }> {
+  return adminFetch(`/pricing-tiers/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export async function deletePricingTier(id: string): Promise<{ success: boolean; error?: string }> {
+  return adminFetch(`/pricing-tiers/${id}`, { method: 'DELETE' });
+}
+
+// --- Payment orders ---
+export interface PaymentOrder {
+  id: string;
+  guardian_id: string;
+  guardian_name?: string | null;
+  razorpay_order_id: string;
+  kind: string;
+  pricing_tier_id: string | null;
+  elder_count_at_purchase: number;
+  amount: number;
+  tier_amount: number;
+  interval_days: number;
+  currency: string;
+  status: string;
+  created_at: string;
+  payment: {
+    id: string;
+    razorpay_payment_id: string;
+    status: string;
+    method: string | null;
+    captured_at: string | null;
+    failure_reason: string | null;
+  } | null;
+}
+
+export async function getPaymentOrders(params?: { page?: number; limit?: number; guardian_id?: string }): Promise<{ success: boolean; orders: PaymentOrder[]; error?: string }> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.guardian_id) query.set('guardian_id', params.guardian_id);
+  return adminFetch(`/payments/orders?${query.toString()}`);
+}
+
+export async function getPaymentOrder(id: string): Promise<{ success: boolean; order: PaymentOrder; error?: string }> {
+  return adminFetch(`/payments/orders/${id}`);
+}
+
+export async function refundPayment(paymentId: string, data?: { amount?: number; speed?: string; reason?: string }): Promise<{ success: boolean; refund?: unknown; error?: string }> {
+  return adminFetch(`/payments/${paymentId}/refund`, { method: 'POST', body: JSON.stringify(data ?? {}) });
+}
+
+// --- SOS alerts ---
+export interface SosAlertRecord {
+  id: string;
+  user_id: string;
+  user_name: string;
+  triggered_at: string;
+  resolved_at: string | null;
+  status: 'active' | 'resolved' | 'cancelled';
+  location?: { latitude: number; longitude: number; address: string | null } | null;
+}
+
+export async function getAdminSosAlerts(params?: { page?: number; limit?: number; status?: string }): Promise<{ success: boolean; alerts: SosAlertRecord[]; error?: string }> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.status) query.set('status', params.status);
+  return adminFetch(`/sos-alerts?${query.toString()}`);
+}
+
+// --- Notifications (inbox / broadcast log) ---
+export interface AdminNotification {
+  id: string;
+  user_id: string;
+  user_name: string;
+  sender_id: string | null;
+  type: string;
+  title: string;
+  body: string;
+  data: unknown;
+  read: boolean;
+  created_at: string;
+}
+
+export async function getAdminNotifications(params?: { page?: number; limit?: number; type?: string; search?: string }): Promise<{ success: boolean; notifications: AdminNotification[]; error?: string }> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.type) query.set('type', params.type);
+  if (params?.search?.trim()) query.set('search', params.search.trim());
+  return adminFetch(`/notifications?${query.toString()}`);
+}
+
+// --- Emergency contacts ---
+export interface EmergencyContactRecord {
+  id: string;
+  user_id: string;
+  user_name: string;
+  name: string;
+  role: string;
+  phone: string;
+  color: string;
+  created_at: string;
+}
+
+export async function getAdminEmergencyContacts(params?: { page?: number; limit?: number; search?: string }): Promise<{ success: boolean; contacts: EmergencyContactRecord[]; error?: string }> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.search?.trim()) query.set('search', params.search.trim());
+  return adminFetch(`/emergency-contacts?${query.toString()}`);
+}
+
+// --- Journal entries ---
+export interface JournalEntryRecord {
+  id: string;
+  user_id: string;
+  user_name: string;
+  type: 'Written' | 'Voice' | string;
+  content: string;
+  content_preview: string;
+  audio_uri: string | null;
+  prompt: string | null;
+  created_at: string;
+}
+
+export async function getAdminJournalEntries(params?: { page?: number; limit?: number; type?: string; search?: string }): Promise<{ success: boolean; entries: JournalEntryRecord[]; error?: string }> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.type) query.set('type', params.type);
+  if (params?.search?.trim()) query.set('search', params.search.trim());
+  return adminFetch(`/journal?${query.toString()}`);
+}
+
+// --- Family messages (shared journal / family chat) ---
+export interface FamilyMessageRecord {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  sender_name: string;
+  receiver_name: string;
+  message: string;
+  message_preview: string;
+  audio_url: string | null;
+  created_at: string;
+}
+
+export async function getAdminFamilyMessages(params?: { page?: number; limit?: number; search?: string }): Promise<{ success: boolean; messages: FamilyMessageRecord[]; error?: string }> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.search?.trim()) query.set('search', params.search.trim());
+  return adminFetch(`/family-messages?${query.toString()}`);
+}
+
+// --- Live elder locations ---
+export interface ElderLocationRecord {
+  elder_id: string;
+  user_name: string;
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  address: string | null;
+  is_sharing: boolean;
+  updated_at: string;
+}
+
+export async function getAdminElderLocations(params?: { page?: number; limit?: number; sharing?: string }): Promise<{ success: boolean; locations: ElderLocationRecord[]; error?: string }> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.sharing) query.set('sharing', params.sharing);
+  return adminFetch(`/elder-locations?${query.toString()}`);
+}
+
+// --- Appointments ---
+export interface AppointmentRecord {
+  id: string;
+  user_id: string;
+  user_name: string;
+  doctor_name: string | null;
+  specialty: string | null;
+  date: string | null;
+  time: string | null;
+  fee: string | null;
+  reason: string | null;
+  status: string;
+  created_at: string;
+}
+
+export async function getAdminAppointments(params?: { page?: number; limit?: number; status?: string; search?: string }): Promise<{ success: boolean; appointments: AppointmentRecord[]; error?: string }> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.status) query.set('status', params.status);
+  if (params?.search?.trim()) query.set('search', params.search.trim());
+  return adminFetch(`/appointments?${query.toString()}`);
+}
+
+// --- Streaks ---
+export interface StreakRecord {
+  id: string;
+  name: string;
+  location: string;
+  current_streak: number;
+  longest_streak: number;
+  last_activity: string | null;
+  status: 'active' | 'broken' | string;
+}
+
+export async function getAdminStreaks(params?: { page?: number; limit?: number; search?: string }): Promise<{ success: boolean; streaks: StreakRecord[]; error?: string }> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.search?.trim()) query.set('search', params.search.trim());
+  return adminFetch(`/streaks?${query.toString()}`);
+}
+
+// --- User subscriptions ---
+export interface UserSubscriptionRecord {
+  id: string;
+  user_name: string;
+  user_type: string;
+  plan: string;
+  status: string;
+  start_date: string | null;
+  renewal_date: string | null;
+  amount: number;
+  currency: string;
+  elder_count: number | null;
+  interval: string | null;
+}
+
+export async function getAdminUserSubscriptions(params?: { page?: number; limit?: number; status?: string; search?: string }): Promise<{ success: boolean; subscriptions: UserSubscriptionRecord[]; error?: string }> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.status) query.set('status', params.status);
+  if (params?.search?.trim()) query.set('search', params.search.trim());
+  return adminFetch(`/user-subscriptions?${query.toString()}`);
+}
+
+// --- Revenue summary ---
+export interface RevenueSummary {
+  total_revenue: number;
+  captured_payments: number;
+  active_subscriptions: number;
+  monthly: { month: string; revenue: number; payments: number }[];
+  by_tier: { plan: string; elder_count: number; revenue: number; subscribers: number }[];
+}
+
+export async function getAdminRevenueSummary(): Promise<{ success: boolean; summary: RevenueSummary; error?: string }> {
+  return adminFetch('/revenue');
 }

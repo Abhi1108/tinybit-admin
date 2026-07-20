@@ -1,10 +1,12 @@
 'use client';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Zap, Search, RotateCcw, PauseCircle, PlayCircle, Save,
   TrendingUp, Users, Award, CheckSquare, Star, Plus, Trash2, Edit2, X,
+  Loader2, AlertCircle,
 } from 'lucide-react';
 import { Badge, cn } from '@/src/components/ui';
+import { getAdminStreaks } from '@/src/services/adminApi';
 
 /* ─── Types ─────────────────────────────────────────────── */
 type StreakStatus = 'active' | 'paused' | 'broken';
@@ -24,20 +26,7 @@ interface RewardRule {
   id: string; milestone: string; points: number; badge: string; tier: string;
 }
 
-/* ─── Mock Data ─────────────────────────────────────────── */
-const INIT_STREAKS: UserStreak[] = [
-  { id: 's001', name: 'Arjun Mehta', location: 'Mumbai', currentStreak: 87, longestStreak: 92, totalPoints: 14850, status: 'active', lastActivity: '2026-06-10', activities: ['check-in', 'medicine', 'journal'] },
-  { id: 's002', name: 'Priya Sharma', location: 'Delhi', currentStreak: 74, longestStreak: 74, totalPoints: 12600, status: 'active', lastActivity: '2026-06-10', activities: ['check-in', 'medicine'] },
-  { id: 's003', name: 'Ramesh Patel', location: 'Bangalore', currentStreak: 61, longestStreak: 80, totalPoints: 10380, status: 'active', lastActivity: '2026-06-10', activities: ['check-in', 'journal', 'activity'] },
-  { id: 's004', name: 'Kavitha Nair', location: 'Chennai', currentStreak: 45, longestStreak: 61, totalPoints: 7650, status: 'paused', lastActivity: '2026-06-08', activities: ['check-in'] },
-  { id: 's005', name: 'Suresh Kumar', location: 'Hyderabad', currentStreak: 38, longestStreak: 45, totalPoints: 6460, status: 'active', lastActivity: '2026-06-10', activities: ['check-in', 'medicine', 'activity'] },
-  { id: 's006', name: 'Anita Joshi', location: 'Pune', currentStreak: 0, longestStreak: 32, totalPoints: 5440, status: 'broken', lastActivity: '2026-06-07', activities: ['check-in'] },
-  { id: 's007', name: 'Vijay Gupta', location: 'Ahmedabad', currentStreak: 29, longestStreak: 41, totalPoints: 4930, status: 'active', lastActivity: '2026-06-10', activities: ['check-in', 'medicine'] },
-  { id: 's008', name: 'Meena Reddy', location: 'Kolkata', currentStreak: 21, longestStreak: 21, totalPoints: 3570, status: 'paused', lastActivity: '2026-06-09', activities: ['check-in', 'journal'] },
-  { id: 's009', name: 'Prakash Iyer', location: 'Jaipur', currentStreak: 14, longestStreak: 28, totalPoints: 2380, status: 'active', lastActivity: '2026-06-10', activities: ['check-in', 'activity'] },
-  { id: 's010', name: 'Sunita Singh', location: 'Lucknow', currentStreak: 0, longestStreak: 15, totalPoints: 1800, status: 'broken', lastActivity: '2026-06-05', activities: ['check-in'] },
-];
-
+/* ─── Local config mocks (no backend tables for these) ──── */
 const INIT_ACTIVITIES: StreakActivity[] = [
   { id: 'a001', label: 'Daily Check-In', points: 10, enabled: true, minPerDay: 1 },
   { id: 'a002', label: 'Medicine Tracking', points: 15, enabled: true, minPerDay: 1 },
@@ -71,7 +60,9 @@ const statusStyle: Record<StreakStatus, { variant: 'success' | 'warning' | 'dang
 /* ─── Page ──────────────────────────────────────────────── */
 export default function StreakManagementPage() {
   const [activeTab, setActiveTab] = useState<'users' | 'config' | 'rewards'>('users');
-  const [streaks, setStreaks] = useState(INIT_STREAKS);
+  const [streaks, setStreaks] = useState<UserStreak[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activities, setActivities] = useState(INIT_ACTIVITIES);
   const [rules, setRules] = useState(INIT_RULES);
 
@@ -79,6 +70,36 @@ export default function StreakManagementPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | StreakStatus>('all');
   const [resetId, setResetId] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await getAdminStreaks({ limit: 100 });
+        if (res.success) {
+          setStreaks((res.streaks || []).map(s => ({
+            id: s.id,
+            name: s.name,
+            location: s.location || '—',
+            currentStreak: s.current_streak,
+            longestStreak: s.longest_streak,
+            totalPoints: 0,
+            status: (s.status === 'active' ? 'active' : 'broken') as StreakStatus,
+            lastActivity: s.last_activity ? s.last_activity.slice(0, 10) : '',
+            activities: [],
+          })));
+        } else {
+          setError(res.error || 'Failed to load streaks');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load streaks');
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
 
   // Reward rule state
   const [showAddRule, setShowAddRule] = useState(false);
@@ -98,7 +119,7 @@ export default function StreakManagementPage() {
 
   const stats = useMemo(() => ({
     active: streaks.filter(s => s.status === 'active').length,
-    highest: Math.max(...streaks.map(s => s.currentStreak)),
+    highest: streaks.length ? Math.max(...streaks.map(s => s.currentStreak)) : 0,
     avg: Math.round(streaks.filter(s => s.status === 'active').reduce((a, s) => a + s.currentStreak, 0) / Math.max(1, streaks.filter(s => s.status === 'active').length)),
     paused: streaks.filter(s => s.status === 'paused').length,
   }), [streaks]);
@@ -143,6 +164,12 @@ export default function StreakManagementPage() {
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Manage user streaks, reward rules, and engagement configuration</p>
         </div>
       </div>
+
+      {error && (
+        <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-700 dark:text-red-400">
+          <AlertCircle className="w-4 h-4 mt-0.5" />{error}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -192,6 +219,9 @@ export default function StreakManagementPage() {
           </div>
 
           <div className="card overflow-hidden">
+            {loading ? (
+              <div className="py-16 flex items-center justify-center gap-2 text-slate-400"><Loader2 className="w-5 h-5 animate-spin" /> Loading…</div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -263,8 +293,9 @@ export default function StreakManagementPage() {
                 </tbody>
               </table>
             </div>
+            )}
             <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-              <p className="text-xs text-slate-500">Showing {filtered.length} of {streaks.length} users</p>
+              <p className="text-xs text-slate-500">Showing {filtered.length} of {streaks.length} users · Points/activities not tracked server-side</p>
             </div>
           </div>
         </div>

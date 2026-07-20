@@ -1,11 +1,8 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Bell, Plus, Send, Users, AlertCircle, Loader2 } from 'lucide-react';
-import { Badge, cn } from '@/src/components/ui';
-import { notifications } from '@/src/data/mockData';
-import { broadcastMessage } from '@/src/services/adminApi';
-
-const pushNotifications = notifications.filter(n => n.type === 'push');
+import { Badge } from '@/src/components/ui';
+import { broadcastMessage, getAdminNotifications, type AdminNotification } from '@/src/services/adminApi';
 
 const statusVariants: Record<string, 'success' | 'info' | 'default' | 'danger'> = {
   sent: 'success',
@@ -14,15 +11,76 @@ const statusVariants: Record<string, 'success' | 'info' | 'default' | 'danger'> 
   failed: 'danger',
 };
 
+interface HistoryItem {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  target: string;
+  status: string;
+  sentAt: string;
+  recipientCount: number;
+  openRate: number;
+  createdBy: string;
+}
+
+function groupBroadcasts(rows: AdminNotification[]): HistoryItem[] {
+  const map = new Map<string, HistoryItem>();
+  for (const n of rows) {
+    const bucket = `${n.title}::${(n.created_at || '').slice(0, 16)}`;
+    const existing = map.get(bucket);
+    if (existing) {
+      existing.recipientCount += 1;
+      if (n.read) existing.openRate += 1;
+    } else {
+      map.set(bucket, {
+        id: n.id,
+        title: n.title,
+        message: n.body,
+        type: 'push',
+        target: 'all',
+        status: 'sent',
+        sentAt: n.created_at,
+        recipientCount: 1,
+        openRate: n.read ? 1 : 0,
+        createdBy: 'Admin',
+      });
+    }
+  }
+  return Array.from(map.values()).map(item => ({
+    ...item,
+    openRate: item.recipientCount ? Math.round((item.openRate / item.recipientCount) * 100) : 0,
+  }));
+}
+
 export default function PushNotificationsPage() {
   const [compose, setCompose] = useState(false);
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [target, setTarget] = useState('all');
-  const [localNotifications, setLocalNotifications] = useState<any[]>(pushNotifications);
+  const [localNotifications, setLocalNotifications] = useState<HistoryItem[]>([]);
   const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const loadHistory = async () => {
+    setLoading(true);
+    try {
+      const res = await getAdminNotifications({ limit: 100, type: 'announcement' });
+      if (res.success) {
+        setLocalNotifications(groupBroadcasts(res.notifications || []));
+      }
+    } catch (err) {
+      console.error('Failed to load notification history', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadHistory();
+  }, []);
 
   async function handleSend() {
     if (!title.trim() || !message.trim()) {
@@ -36,22 +94,10 @@ export default function PushNotificationsPage() {
       const res = await broadcastMessage(message, title);
       if (res && res.success) {
         setSuccess('Notification broadcasted successfully!');
-        const newNotif = {
-          id: `notif-${Date.now()}`,
-          title,
-          message,
-          type: 'push',
-          target,
-          status: 'sent',
-          sentAt: new Date().toISOString(),
-          recipientCount: (res as any).sent || (res as any).results || 0,
-          openRate: 0,
-          createdBy: 'Arjun Mehta',
-        };
-        setLocalNotifications([newNotif, ...localNotifications]);
         setCompose(false);
         setTitle('');
         setMessage('');
+        await loadHistory();
       } else {
         setError('Failed to broadcast notification.');
       }
@@ -83,12 +129,11 @@ export default function PushNotificationsPage() {
       )}
 
       {success && (
-        <div className="flex items-start gap-3 p-4 bg-emerald-55 dark:bg-emerald-900/20 border border-emerald-250 dark:border-emerald-800 rounded-xl text-sm text-emerald-700 dark:text-emerald-400">
+        <div className="flex items-start gap-3 p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl text-sm text-emerald-700 dark:text-emerald-400">
           <span>{success}</span>
         </div>
       )}
 
-      {/* Compose Panel */}
       {compose && (
         <div className="card p-6 border-2 border-brand-200 dark:border-brand-800">
           <h2 className="section-title mb-4">New Push Notification</h2>
@@ -127,13 +172,17 @@ export default function PushNotificationsPage() {
         </div>
       )}
 
-      {/* Notification History */}
       <div className="card overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
           <h2 className="section-title">Push History</h2>
         </div>
         <div className="divide-y divide-slate-100 dark:divide-slate-800">
-          {localNotifications.map(n => (
+          {loading && (
+            <div className="px-5 py-12 text-center text-slate-400 flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading history…
+            </div>
+          )}
+          {!loading && localNotifications.map(n => (
             <div key={n.id} className="px-5 py-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-4">
@@ -157,6 +206,9 @@ export default function PushNotificationsPage() {
               </div>
             </div>
           ))}
+          {!loading && localNotifications.length === 0 && (
+            <div className="px-5 py-12 text-center text-slate-400 text-sm">No push history yet</div>
+          )}
         </div>
       </div>
     </div>

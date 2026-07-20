@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Search, Loader2, AlertCircle, Download, UserPlus } from 'lucide-react';
 import Link from 'next/link';
-import { Avatar, StatusBadge, Pagination, Badge } from '@/src/components/ui';
+import { Avatar, StatusBadge, Pagination, Badge, Tabs } from '@/src/components/ui';
 import { useUserList } from '@/src/hooks/useUserList';
 import { UserRowActions } from '@/src/components/users/UserRowActions';
 import { UserFormModal } from '@/src/components/users/UserFormModal';
@@ -16,11 +16,13 @@ import {
 
 export default function GuardiansPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
+  const [view, setView] = useState<'active' | 'trash'>('active');
   const [showCreate, setShowCreate] = useState(false);
   const [exporting, setExporting] = useState(false);
   const { users, total, page, setPage, search, setSearch, loading, error, pageSize, refetch } = useUserList({
     role: 'guardian',
     status: statusFilter,
+    deleted: view === 'trash' ? 'only' : undefined,
     pageSize: 20,
   });
 
@@ -54,6 +56,15 @@ export default function GuardiansPage() {
           </button>
         </div>
       </div>
+
+      <Tabs
+        tabs={[
+          { id: 'active', label: 'Guardians' },
+          { id: 'trash', label: 'Trash' },
+        ]}
+        active={view}
+        onChange={(id) => setView(id as 'active' | 'trash')}
+      />
 
       <div className="card p-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 flex-1 min-w-64 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2">
@@ -94,7 +105,11 @@ export default function GuardiansPage() {
                 <th className="table-header">Linked Elders</th>
                 <th className="table-header">Country</th>
                 <th className="table-header">Status</th>
-                <th className="table-header">Last Active</th>
+                {view === 'trash' ? (
+                  <th className="table-header">Deleted</th>
+                ) : (
+                  <th className="table-header">Last Active</th>
+                )}
                 <th className="table-header">Joined</th>
                 <th className="table-header">Actions</th>
               </tr>
@@ -127,7 +142,14 @@ export default function GuardiansPage() {
                       </td>
                       <td className="table-cell text-sm">{guardian.country ?? '—'}</td>
                       <td className="table-cell"><StatusBadge status={profileStatus(guardian.is_banned)} /></td>
-                      <td className="table-cell text-xs text-slate-500">{formatLastActive(guardian.last_active)}</td>
+                      {view === 'trash' ? (
+                        <td className="table-cell text-xs text-slate-500">
+                          {formatLastActive(guardian.deleted_at)}
+                          {guardian.deleted_by ? <span className="block">by {guardian.deleted_by}</span> : null}
+                        </td>
+                      ) : (
+                        <td className="table-cell text-xs text-slate-500">{formatLastActive(guardian.last_active)}</td>
+                      )}
                       <td className="table-cell text-xs text-slate-500">{formatJoined(guardian.created_at)}</td>
                       <td className="table-cell">
                         <UserRowActions

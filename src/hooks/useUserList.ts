@@ -6,10 +6,12 @@ import { getAdminUsers, type AdminProfileUser } from '@/src/services/adminApi';
 interface UseUserListOptions {
   role: 'elder' | 'guardian';
   status?: 'all' | 'active' | 'suspended';
+  /** 'only' lists trashed users instead of the normal active list. */
+  deleted?: 'only';
   pageSize?: number;
 }
 
-export function useUserList({ role, status = 'all', pageSize = 20 }: UseUserListOptions) {
+export function useUserList({ role, status = 'all', deleted, pageSize = 20 }: UseUserListOptions) {
   const [users, setUsers] = useState<AdminProfileUser[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -22,7 +24,7 @@ export function useUserList({ role, status = 'all', pageSize = 20 }: UseUserList
 
   useEffect(() => {
     setPage(1);
-  }, [search, status, role]);
+  }, [search, status, deleted, role]);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,7 +32,7 @@ export function useUserList({ role, status = 'all', pageSize = 20 }: UseUserList
       setLoading(true);
       setError('');
       try {
-        const data = await getAdminUsers({ role, search, status, page, limit: pageSize });
+        const data = await getAdminUsers({ role, search, status, deleted, page, limit: pageSize });
         if (cancelled) return;
         setUsers(data.users ?? []);
         setTotal(data.total ?? 0);
@@ -48,7 +50,7 @@ export function useUserList({ role, status = 'all', pageSize = 20 }: UseUserList
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [role, search, status, page, pageSize, reloadKey]);
+  }, [role, search, status, deleted, page, pageSize, reloadKey]);
 
   return {
     users,
