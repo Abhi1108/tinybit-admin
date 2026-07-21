@@ -1,8 +1,22 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, AlertCircle, Loader2 } from 'lucide-react';
+import { Search, AlertCircle, Loader2 } from 'lucide-react';
 import { Badge, Pagination, cn } from '@/src/components/ui';
 import { getAdminMedicines } from '@/src/services/adminApi';
+
+function formatLastTaken(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '—';
+  }
+}
 
 export default function MedicinesPage() {
   const [search, setSearch] = useState('');
@@ -35,6 +49,10 @@ export default function MedicinesPage() {
   );
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
+  const withAdherence = medsList.filter(m => m.adherence_7d != null);
+  const highAdherence = withAdherence.filter(m => m.adherence_7d > 90).length;
+  const lowAdherence = withAdherence.filter(m => m.adherence_7d < 70).length;
+
   const refillVariants = {
     ok: 'success' as const,
     low: 'warning' as const,
@@ -50,7 +68,6 @@ export default function MedicinesPage() {
             {loading ? 'Loading...' : `${filtered.length} active prescriptions`}
           </p>
         </div>
-        <button className="btn-primary"><Plus className="w-4 h-4" /> Add Medicine</button>
       </div>
 
       {error && (
@@ -64,8 +81,8 @@ export default function MedicinesPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Total Medicines', value: loading ? '—' : medsList.length, color: 'text-brand-600', bg: 'bg-brand-50 dark:bg-brand-900/20' },
-          { label: 'High Adherence (>90%)', value: '—', color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-          { label: 'Low Adherence (<70%)', value: '—', color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-900/20' },
+          { label: 'High Adherence (>90%)', value: loading ? '—' : highAdherence, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+          { label: 'Low Adherence (<70%)', value: loading ? '—' : lowAdherence, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-900/20' },
           { label: 'Refill Needed', value: loading ? '—' : medsList.filter(m => (m.stock || 0) <= 5).length, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/20' },
         ].map(s => (
           <div key={s.label} className={cn('card p-4 rounded-xl', s.bg)}>
@@ -115,10 +132,12 @@ export default function MedicinesPage() {
                 </tr>
               ) : (
                 paginated.map(med => {
-                  const dosage = med.dosage || med.category || '—';
+                  const dosageParts = [med.dosage, med.dosage_unit].filter(Boolean).join(' ');
+                  const dosage = dosageParts || med.generic_name || '—';
                   const schedule = med.schedule_time || med.frequency || '—';
                   const refillStatus = med.stock === 0 ? 'empty' : (med.stock || 0) <= 5 ? 'low' : 'ok';
                   const status = med.is_active ? 'active' : 'inactive';
+                  const adherence = med.adherence_7d;
 
                   return (
                     <tr key={med.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
@@ -131,8 +150,19 @@ export default function MedicinesPage() {
                         <p className="text-xs text-slate-500">{med.prescribed_by || '—'}</p>
                       </td>
                       <td className="table-cell text-sm text-slate-600 dark:text-slate-400">{schedule}</td>
-                      <td className="table-cell text-xs text-slate-500">—</td>
-                      <td className="table-cell text-xs text-slate-500">—</td>
+                      <td className="table-cell text-sm">
+                        {adherence != null ? (
+                          <span className={cn(
+                            'font-medium',
+                            adherence > 90 ? 'text-emerald-600' : adherence < 70 ? 'text-red-600' : 'text-slate-700 dark:text-slate-300',
+                          )}>
+                            {adherence}%
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-500">—</span>
+                        )}
+                      </td>
+                      <td className="table-cell text-xs text-slate-500">{formatLastTaken(med.last_taken)}</td>
                       <td className="table-cell text-xs text-slate-500">—</td>
                       <td className="table-cell">
                         <Badge variant={refillVariants[refillStatus]} size="sm">{refillStatus}</Badge>

@@ -48,17 +48,14 @@ function seriesToWellness(s?: Series) {
   }));
 }
 
-function seriesToSos(s?: Series) {
-  if (!s?.labels?.length) return [];
-  return s.labels.map((label, i) => {
-    const alerts = s.data[i] || 0;
-    return {
-      name: label.length > 5 ? label.slice(5) : label,
-      alerts,
-      resolved: Math.round(alerts * 0.85),
-      escalated: Math.max(0, alerts - Math.round(alerts * 0.85)),
-    };
-  });
+function seriesToSos(sos?: { labels: string[]; alerts: number[]; resolved: number[]; cancelled: number[] }) {
+  if (!sos?.labels?.length) return [];
+  return sos.labels.map((label, i) => ({
+    name: label.length > 5 ? label.slice(5) : label,
+    alerts: Number(sos.alerts?.[i]) || 0,
+    resolved: Number(sos.resolved?.[i]) || 0,
+    cancelled: Number(sos.cancelled?.[i]) || 0,
+  }));
 }
 
 export default function ReportsPage() {
@@ -86,13 +83,13 @@ export default function ReportsPage() {
   const growthData = seriesToGrowth(analytics?.user_growth);
   const medicineData = seriesToAdherence(analytics?.med_category);
   const wellnessData = seriesToWellness(analytics?.check_in_dow);
-  const sosData = seriesToSos(analytics?.ai_by_day);
+  const sosData = seriesToSos(analytics?.sos_by_day);
 
   const charts = [
     { id: 'user-growth', label: 'User Growth', icon: <Users className="w-4 h-4" /> },
     { id: 'medicine', label: 'Medicine Mix', icon: <Heart className="w-4 h-4" /> },
     { id: 'wellness', label: 'Check-ins', icon: <TrendingUp className="w-4 h-4" /> },
-    { id: 'sos', label: 'AI Volume', icon: <ShieldAlert className="w-4 h-4" /> },
+    { id: 'sos', label: 'SOS Alerts', icon: <ShieldAlert className="w-4 h-4" /> },
   ];
 
   return (

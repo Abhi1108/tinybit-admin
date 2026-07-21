@@ -1,203 +1,432 @@
 'use client';
-import React, { useState, useMemo } from 'react';
+
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Film, Plus, Search, Trash2, Edit2, Star, Upload, X, Save,
-  Tag, Clock, Eye, CheckSquare, Square, FolderOpen, BarChart2,
-  ToggleLeft, ToggleRight, Grid3X3, List,
+  Film,
+  Search,
+  Trash2,
+  Edit2,
+  Upload,
+  X,
+  Save,
+  Clock,
+  Eye,
+  CheckSquare,
+  Square,
+  FolderOpen,
+  Loader2,
+  AlertCircle,
+  Youtube,
+  Video,
+  ExternalLink,
 } from 'lucide-react';
 import { Badge, cn } from '@/src/components/ui';
+import {
+  getMoodMedia,
+  createMoodMediaTrack,
+  updateMoodMediaTrack,
+  deleteMoodMediaTrack,
+  presignCatalogUpload,
+} from '@/src/services/adminApi';
 
-/* ─── Types ─────────────────────────────────────────────── */
-type VideoStatus = 'published' | 'draft';
-type CatStatus = 'active' | 'inactive';
+type MoodCategory = 'bhajans' | 'meditation' | 'jokes_fun' | 'nature_sounds';
+type MediaType = 'video' | 'youtube';
 
-interface VideoCategory {
-  id: string; name: string; description: string; icon: string;
-  videoCount: number; status: CatStatus; createdAt: string;
+interface VideoTrack {
+  id: string;
+  category: MoodCategory;
+  media_type: MediaType;
+  title: string;
+  subtitle: string | null;
+  duration_seconds: number | null;
+  duration_label: string | null;
+  media_url: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
 }
-interface VideoItem {
-  id: string; title: string; description: string;
-  categoryId: string; category: string; tags: string[];
-  duration: string; status: VideoStatus; featured: boolean;
-  emoji: string; views: number; uploadedAt: string;
-}
 
-/* ─── Mock Data ─────────────────────────────────────────── */
-const INIT_CATS: VideoCategory[] = [
-  { id: 'c001', name: 'Wellness', description: 'Mind and body wellness content', icon: '🧘', videoCount: 3, status: 'active', createdAt: '2026-01-10' },
-  { id: 'c002', name: 'Breathing Exercises', description: 'Guided breathing techniques for relaxation', icon: '🌬️', videoCount: 2, status: 'active', createdAt: '2026-01-15' },
-  { id: 'c003', name: 'Tutorials', description: 'App how-to guides and feature walkthroughs', icon: '📱', videoCount: 2, status: 'active', createdAt: '2026-02-01' },
-  { id: 'c004', name: 'Healthcare', description: 'Medical information and senior health advice', icon: '🏥', videoCount: 2, status: 'active', createdAt: '2026-02-10' },
-  { id: 'c005', name: 'Memory Games', description: 'Cognitive exercises to improve memory', icon: '🧩', videoCount: 1, status: 'inactive', createdAt: '2026-03-01' },
-  { id: 'c006', name: 'Morning Routines', description: 'Daily morning activity guides for seniors', icon: '🌅', videoCount: 1, status: 'active', createdAt: '2026-03-15' },
-];
-const INIT_VIDEOS: VideoItem[] = [
-  { id: 'v001', title: 'Morning Yoga for Seniors', description: 'Gentle 12-min yoga routine focusing on flexibility and balance.', categoryId: 'c001', category: 'Wellness', tags: ['yoga', 'morning', 'flexibility'], duration: '12:34', status: 'published', featured: true, emoji: '🧘', views: 3842, uploadedAt: '2026-05-20' },
-  { id: 'v002', title: '4-7-8 Breathing Technique', description: 'Calming breathing exercise to reduce anxiety and improve sleep.', categoryId: 'c002', category: 'Breathing Exercises', tags: ['breathing', 'anxiety', 'sleep'], duration: '8:15', status: 'published', featured: true, emoji: '🌬️', views: 2917, uploadedAt: '2026-05-18' },
-  { id: 'v003', title: 'How to Use Daily Check-In', description: 'Step-by-step tutorial on the daily check-in feature.', categoryId: 'c003', category: 'Tutorials', tags: ['tutorial', 'check-in', 'guide'], duration: '5:02', status: 'published', featured: false, emoji: '📱', views: 1456, uploadedAt: '2026-05-15' },
-  { id: 'v004', title: 'Understanding Blood Pressure', description: 'Comprehensive guide to monitoring blood pressure for seniors.', categoryId: 'c004', category: 'Healthcare', tags: ['health', 'blood pressure'], duration: '15:30', status: 'published', featured: false, emoji: '🏥', views: 4201, uploadedAt: '2026-05-12' },
-  { id: 'v005', title: 'Memory Training: Number Sequences', description: 'Cognitive exercise using number sequences to improve short-term memory.', categoryId: 'c005', category: 'Memory Games', tags: ['memory', 'cognitive', 'games'], duration: '10:00', status: 'draft', featured: false, emoji: '🧩', views: 0, uploadedAt: '2026-05-28' },
-  { id: 'v006', title: 'Sunrise Stretching Routine', description: 'Gentle 8-min full-body stretch to start the day with energy.', categoryId: 'c006', category: 'Morning Routines', tags: ['stretch', 'morning', 'routine'], duration: '8:00', status: 'published', featured: false, emoji: '🌅', views: 2103, uploadedAt: '2026-05-10' },
-  { id: 'v007', title: 'Diaphragmatic Breathing', description: 'Deep belly breathing for stress relief and improved lung capacity.', categoryId: 'c002', category: 'Breathing Exercises', tags: ['breathing', 'stress', 'lung'], duration: '6:45', status: 'published', featured: false, emoji: '🌬️', views: 1834, uploadedAt: '2026-05-08' },
-  { id: 'v008', title: 'Chair Yoga: Upper Body', description: 'Seated yoga routine targeting upper body mobility.', categoryId: 'c001', category: 'Wellness', tags: ['yoga', 'chair', 'mobility'], duration: '11:20', status: 'draft', featured: false, emoji: '🧘', views: 0, uploadedAt: '2026-06-01' },
-  { id: 'v009', title: 'Setting Up Family Circle', description: 'How to invite family members and set up your care network.', categoryId: 'c003', category: 'Tutorials', tags: ['tutorial', 'family', 'setup'], duration: '4:30', status: 'published', featured: false, emoji: '📱', views: 987, uploadedAt: '2026-04-22' },
-  { id: 'v010', title: 'Diabetes Management Basics', description: 'Essential tips for managing blood sugar and a healthy lifestyle.', categoryId: 'c004', category: 'Healthcare', tags: ['diabetes', 'health', 'management'], duration: '18:10', status: 'published', featured: true, emoji: '🏥', views: 3654, uploadedAt: '2026-04-15' },
-  { id: 'v011', title: 'Balance Improvement Exercises', description: 'Targeted exercises to improve balance and prevent falls.', categoryId: 'c001', category: 'Wellness', tags: ['balance', 'safety', 'exercise'], duration: '14:00', status: 'published', featured: false, emoji: '🧘', views: 2210, uploadedAt: '2026-04-10' },
+const CATEGORIES: { id: MoodCategory; name: string; icon: string; description: string }[] = [
+  { id: 'bhajans', name: 'Bhajans', icon: '🙏', description: 'Devotional and spiritual video content' },
+  { id: 'meditation', name: 'Meditation', icon: '🧘', description: 'Guided meditation and breathing videos' },
+  { id: 'nature_sounds', name: 'Nature Sounds', icon: '🌿', description: 'Nature and ambient video loops' },
+  { id: 'jokes_fun', name: 'Jokes & Fun', icon: '😄', description: 'Light entertainment videos' },
 ];
 
-const EMPTY_UPLOAD = { title: '', description: '', categoryId: '', tags: '', duration: '', status: 'draft' as VideoStatus, featured: false, url: '' };
-const EMPTY_CAT = { name: '', description: '', icon: '🎬', status: 'active' as CatStatus };
-const CAT_ICONS = ['🎬', '🧘', '🌬️', '📱', '🏥', '🧩', '🌅', '💊', '🏃', '🧠', '❤️', '🌿'];
+const EMPTY_FORM = {
+  title: '',
+  subtitle: '',
+  category: 'meditation' as MoodCategory,
+  media_type: 'youtube' as MediaType,
+  media_url: '',
+  duration_label: '',
+  duration_seconds: '' as string | number,
+  is_active: true,
+  sort_order: 0,
+};
 
-/* ─── Page ──────────────────────────────────────────────── */
+function categoryMeta(id: string) {
+  return CATEGORIES.find((c) => c.id === id) || { id, name: id, icon: '🎬', description: '' };
+}
+
+function formatDuration(track: VideoTrack) {
+  if (track.duration_label) return track.duration_label;
+  if (track.duration_seconds == null) return '—';
+  const m = Math.floor(track.duration_seconds / 60);
+  const s = track.duration_seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 export default function VideoManagementPage() {
   const [activeTab, setActiveTab] = useState<'videos' | 'categories'>('videos');
-  const [videos, setVideos] = useState(INIT_VIDEOS);
-  const [categories, setCategories] = useState(INIT_CATS);
+  const [videos, setVideos] = useState<VideoTrack[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  // Video state
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [showUpload, setShowUpload] = useState(false);
-  const [editVideo, setEditVideo] = useState<VideoItem | null>(null);
-  const [upload, setUpload] = useState(EMPTY_UPLOAD);
   const [bulkCat, setBulkCat] = useState('');
-
-  // Category state
-  const [showCreateCat, setShowCreateCat] = useState(false);
-  const [editCat, setEditCat] = useState<VideoCategory | null>(null);
   const [catSearch, setCatSearch] = useState('');
-  const [newCat, setNewCat] = useState(EMPTY_CAT);
 
-  const filtered = useMemo(() => videos.filter(v => {
-    const q = search.toLowerCase();
-    return (!q || v.title.toLowerCase().includes(q) || v.tags.some(t => t.includes(q)))
-      && (catFilter === 'all' || v.categoryId === catFilter)
-      && (statusFilter === 'all' || v.status === statusFilter);
-  }), [videos, search, catFilter, statusFilter]);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(EMPTY_FORM);
 
-  const filteredCats = useMemo(() =>
-    categories.filter(c => !catSearch || c.name.toLowerCase().includes(catSearch.toLowerCase())),
-    [categories, catSearch]);
+  async function loadVideos() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await getMoodMedia({
+        limit: 100,
+        media_type: 'video,youtube',
+        search: search.trim() || undefined,
+        category: catFilter === 'all' ? undefined : catFilter,
+      });
+      if (res.success) {
+        setVideos((res.tracks || []) as VideoTrack[]);
+      } else {
+        setError(res.error || 'Failed to load videos');
+        setVideos([]);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load videos');
+      setVideos([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const t = setTimeout(loadVideos, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, catFilter]);
+
+  const filtered = useMemo(() => {
+    return videos.filter((v) => {
+      if (statusFilter === 'published' && !v.is_active) return false;
+      if (statusFilter === 'draft' && v.is_active) return false;
+      if (typeFilter !== 'all' && v.media_type !== typeFilter) return false;
+      return true;
+    });
+  }, [videos, statusFilter, typeFilter]);
 
   const stats = useMemo(() => ({
     total: videos.length,
-    cats: categories.filter(c => c.status === 'active').length,
-    published: videos.filter(v => v.status === 'published').length,
-    draft: videos.filter(v => v.status === 'draft').length,
-    featured: videos.filter(v => v.featured).length,
-    topViewed: [...videos].sort((a, b) => b.views - a.views).slice(0, 3),
-    recent: [...videos].sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt)).slice(0, 3),
-  }), [videos, categories]);
+    cats: CATEGORIES.length,
+    published: videos.filter((v) => v.is_active).length,
+    draft: videos.filter((v) => !v.is_active).length,
+    youtube: videos.filter((v) => v.media_type === 'youtube').length,
+    recent: [...videos]
+      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+      .slice(0, 3),
+  }), [videos]);
 
-  /* Video actions */
-  function toggleSelect(id: string) { setSelected(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
-  function selectAll() { setSelected(filtered.length === selected.size && selected.size > 0 ? new Set() : new Set(filtered.map(v => v.id))); }
-  function bulkDelete() { setVideos(v => v.filter(x => !selected.has(x.id))); setSelected(new Set()); }
-  function bulkUpdateCat() {
-    const cat = categories.find(c => c.id === bulkCat);
-    if (!cat) return;
-    setVideos(v => v.map(x => selected.has(x.id) ? { ...x, categoryId: bulkCat, category: cat.name, emoji: cat.icon } : x));
-    setSelected(new Set()); setBulkCat('');
-  }
-  function togglePublish(id: string) { setVideos(v => v.map(x => x.id === id ? { ...x, status: x.status === 'published' ? 'draft' : 'published' } : x)); }
-  function toggleFeatured(id: string) { setVideos(v => v.map(x => x.id === id ? { ...x, featured: !x.featured } : x)); }
-  function deleteVideo(id: string) { setVideos(v => v.filter(x => x.id !== id)); }
-  function handleUpload() {
-    if (!upload.title || !upload.categoryId) return;
-    const cat = categories.find(c => c.id === upload.categoryId);
-    setVideos(p => [{ id: `v${Date.now()}`, title: upload.title, description: upload.description, categoryId: upload.categoryId, category: cat?.name ?? '', tags: upload.tags.split(',').map(t => t.trim()).filter(Boolean), duration: upload.duration || '0:00', status: upload.status, featured: upload.featured, emoji: cat?.icon ?? '🎬', views: 0, uploadedAt: new Date().toISOString().slice(0, 10) }, ...p]);
-    setUpload(EMPTY_UPLOAD); setShowUpload(false);
-  }
-  function handleEditSave() {
-    if (!editVideo) return;
-    setVideos(v => v.map(x => x.id === editVideo.id ? editVideo : x));
-    setEditVideo(null);
+  const filteredCats = useMemo(
+    () => CATEGORIES.filter((c) => !catSearch || c.name.toLowerCase().includes(catSearch.toLowerCase())),
+    [catSearch],
+  );
+
+  function openCreate() {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setShowForm(true);
   }
 
-  /* Category actions */
-  function handleCreateCat() {
-    if (!newCat.name.trim()) return;
-    setCategories(p => [...p, { id: `c${Date.now()}`, name: newCat.name, description: newCat.description, icon: newCat.icon, videoCount: 0, status: newCat.status, createdAt: new Date().toISOString().slice(0, 10) }]);
-    setNewCat(EMPTY_CAT); setShowCreateCat(false);
+  function openEdit(v: VideoTrack) {
+    setEditingId(v.id);
+    setForm({
+      title: v.title,
+      subtitle: v.subtitle || '',
+      category: v.category,
+      media_type: v.media_type,
+      media_url: v.media_url || '',
+      duration_label: v.duration_label || '',
+      duration_seconds: v.duration_seconds ?? '',
+      is_active: v.is_active,
+      sort_order: v.sort_order ?? 0,
+    });
+    setShowForm(true);
   }
-  function handleSaveCat() { if (!editCat) return; setCategories(p => p.map(c => c.id === editCat.id ? editCat : c)); setEditCat(null); }
-  function toggleCatStatus(id: string) { setCategories(p => p.map(c => c.id === id ? { ...c, status: c.status === 'active' ? 'inactive' : 'active' } : c)); }
-  function deleteCat(id: string) { setCategories(p => p.filter(c => c.id !== id)); }
 
-  /* ── Upload / Edit panel ── */
-  const uploadPanel = (showUpload || editVideo) && (
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const presign = await presignCatalogUpload(file.name, file.type || 'video/mp4');
+      const putRes = await fetch(presign.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'video/mp4' },
+        body: file,
+      });
+      if (!putRes.ok) throw new Error('Upload to storage failed');
+      setForm((f) => ({ ...f, media_type: 'video', media_url: presign.fileUrl }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload file');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }
+
+  async function handleSave() {
+    if (!form.title.trim() || !form.category || !form.media_url.trim()) {
+      setError('Title, category, and video URL are required');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    const payload = {
+      category: form.category,
+      media_type: form.media_type,
+      title: form.title.trim(),
+      subtitle: form.subtitle.trim() || null,
+      media_url: form.media_url.trim(),
+      audio_url: null,
+      duration_label: form.duration_label.trim() || null,
+      duration_seconds: form.duration_seconds === '' ? null : Number(form.duration_seconds) || null,
+      sort_order: form.sort_order ?? 0,
+      is_active: form.is_active,
+    };
+    try {
+      const res = editingId
+        ? await updateMoodMediaTrack(editingId, payload)
+        : await createMoodMediaTrack(payload);
+      if (res.success) {
+        setShowForm(false);
+        setEditingId(null);
+        setForm(EMPTY_FORM);
+        await loadVideos();
+      } else {
+        setError(res.error || 'Failed to save video');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save video');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Delete this video?')) return;
+    try {
+      const res = await deleteMoodMediaTrack(id);
+      if (res.success) {
+        setSelected((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        await loadVideos();
+      } else {
+        setError(res.error || 'Failed to delete video');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete video');
+    }
+  }
+
+  async function togglePublish(v: VideoTrack) {
+    try {
+      const res = await updateMoodMediaTrack(v.id, { is_active: !v.is_active });
+      if (res.success) await loadVideos();
+      else setError(res.error || 'Failed to update status');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update status');
+    }
+  }
+
+  async function bulkDelete() {
+    if (!selected.size || !confirm(`Delete ${selected.size} video(s)?`)) return;
+    setSaving(true);
+    try {
+      await Promise.all(Array.from(selected).map((id) => deleteMoodMediaTrack(id)));
+      setSelected(new Set());
+      await loadVideos();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Bulk delete failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function bulkUpdateCat() {
+    if (!bulkCat || !selected.size) return;
+    setSaving(true);
+    try {
+      await Promise.all(Array.from(selected).map((id) => updateMoodMediaTrack(id, { category: bulkCat })));
+      setSelected(new Set());
+      setBulkCat('');
+      await loadVideos();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Bulk move failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelected((p) => {
+      const n = new Set(p);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+
+  function selectAll() {
+    setSelected(
+      filtered.length === selected.size && selected.size > 0
+        ? new Set()
+        : new Set(filtered.map((v) => v.id)),
+    );
+  }
+
+  const formPanel = showForm && (
     <div className="card p-6 border-2 border-brand-200 dark:border-brand-800">
       <div className="flex items-center justify-between mb-5">
-        <h2 className="section-title">{editVideo ? 'Edit Video' : 'Upload New Video'}</h2>
-        <button onClick={() => { setShowUpload(false); setEditVideo(null); }} className="text-slate-400 hover:text-slate-600 transition-colors"><X className="w-4 h-4" /></button>
+        <h2 className="section-title">{editingId ? 'Edit Video' : 'Add Video'}</h2>
+        <button
+          type="button"
+          onClick={() => { setShowForm(false); setEditingId(null); }}
+          className="text-slate-400 hover:text-slate-600 transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Video Title <span className="text-red-500">*</span></label>
-          <input className="input-field" placeholder="e.g. Morning Yoga for Seniors"
-            value={editVideo ? editVideo.title : upload.title}
-            onChange={e => editVideo ? setEditVideo({ ...editVideo, title: e.target.value }) : setUpload(u => ({ ...u, title: e.target.value }))} />
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+            Title <span className="text-red-500">*</span>
+          </label>
+          <input
+            className="input-field"
+            placeholder="e.g. Morning Yoga for Seniors"
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+          />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Category <span className="text-red-500">*</span></label>
-          <select className="input-field"
-            value={editVideo ? editVideo.categoryId : upload.categoryId}
-            onChange={e => { const cat = categories.find(c => c.id === e.target.value); editVideo ? setEditVideo({ ...editVideo, categoryId: e.target.value, category: cat?.name ?? '', emoji: cat?.icon ?? '' }) : setUpload(u => ({ ...u, categoryId: e.target.value })); }}>
-            <option value="">Select category...</option>
-            {categories.filter(c => c.status === 'active').map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+            Category <span className="text-red-500">*</span>
+          </label>
+          <select
+            className="input-field"
+            value={form.category}
+            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as MoodCategory }))}
+          >
+            {CATEGORIES.map((c) => (
+              <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+            ))}
           </select>
         </div>
         <div className="md:col-span-2">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Description</label>
-          <textarea className="input-field resize-none" rows={2} placeholder="Brief description of the video content"
-            value={editVideo ? editVideo.description : upload.description}
-            onChange={e => editVideo ? setEditVideo({ ...editVideo, description: e.target.value }) : setUpload(u => ({ ...u, description: e.target.value }))} />
-        </div>
-        {!editVideo && (
-          <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Video URL (optional)</label>
-            <input className="input-field" placeholder="https://youtube.com/... or leave blank to upload file" value={upload.url} onChange={e => setUpload(u => ({ ...u, url: e.target.value }))} />
-          </div>
-        )}
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Tags <span className="text-slate-400">(comma-separated)</span></label>
-          <input className="input-field" placeholder="yoga, wellness, seniors"
-            value={editVideo ? editVideo.tags.join(', ') : upload.tags}
-            onChange={e => editVideo ? setEditVideo({ ...editVideo, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) }) : setUpload(u => ({ ...u, tags: e.target.value }))} />
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Subtitle / description</label>
+          <textarea
+            className="input-field resize-none"
+            rows={2}
+            placeholder="Brief description"
+            value={form.subtitle}
+            onChange={(e) => setForm((f) => ({ ...f, subtitle: e.target.value }))}
+          />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Duration</label>
-          <input className="input-field" placeholder="e.g. 12:34"
-            value={editVideo ? editVideo.duration : upload.duration}
-            onChange={e => editVideo ? setEditVideo({ ...editVideo, duration: e.target.value }) : setUpload(u => ({ ...u, duration: e.target.value }))} />
-        </div>
-        <div className="flex items-center gap-6">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Status</label>
-            <select className="input-field w-auto"
-              value={editVideo ? editVideo.status : upload.status}
-              onChange={e => { const v = e.target.value as VideoStatus; editVideo ? setEditVideo({ ...editVideo, status: v }) : setUpload(u => ({ ...u, status: v })); }}>
-              <option value="draft">Draft</option>
-              <option value="published">Published</option>
-            </select>
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer mt-5">
-            <input type="checkbox"
-              checked={editVideo ? editVideo.featured : upload.featured}
-              onChange={e => editVideo ? setEditVideo({ ...editVideo, featured: e.target.checked }) : setUpload(u => ({ ...u, featured: e.target.checked }))}
-              className="w-4 h-4 rounded border-slate-300 accent-yellow-500" />
-            <span className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1"><Star className="w-3.5 h-3.5 text-yellow-500" /> Featured</span>
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+            Media type <span className="text-red-500">*</span>
           </label>
+          <select
+            className="input-field"
+            value={form.media_type}
+            onChange={(e) => setForm((f) => ({ ...f, media_type: e.target.value as MediaType }))}
+          >
+            <option value="youtube">YouTube</option>
+            <option value="video">Uploaded video (S3)</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Status</label>
+          <select
+            className="input-field"
+            value={form.is_active ? 'published' : 'draft'}
+            onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.value === 'published' }))}
+          >
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+          </select>
+        </div>
+        <div className="md:col-span-2">
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+            Video URL <span className="text-red-500">*</span>
+          </label>
+          <input
+            className="input-field"
+            placeholder={form.media_type === 'youtube' ? 'https://youtube.com/watch?v=... or youtu.be/...' : 'https://... (S3 URL after upload)'}
+            value={form.media_url}
+            onChange={(e) => setForm((f) => ({ ...f, media_url: e.target.value }))}
+          />
+          {form.media_type === 'video' && (
+            <label className="mt-2 inline-flex items-center gap-2 text-xs text-brand-600 cursor-pointer">
+              <Upload className="w-3.5 h-3.5" />
+              {uploading ? 'Uploading…' : 'Upload video file'}
+              <input type="file" accept="video/*" className="hidden" disabled={uploading} onChange={handleFileSelected} />
+            </label>
+          )}
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Duration label</label>
+          <input
+            className="input-field"
+            placeholder="e.g. 12:34"
+            value={form.duration_label}
+            onChange={(e) => setForm((f) => ({ ...f, duration_label: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Duration (seconds)</label>
+          <input
+            className="input-field"
+            type="number"
+            min={0}
+            placeholder="Optional"
+            value={form.duration_seconds}
+            onChange={(e) => setForm((f) => ({ ...f, duration_seconds: e.target.value }))}
+          />
         </div>
       </div>
       <div className="flex justify-end gap-2 mt-5">
-        <button className="btn-secondary" onClick={() => { setShowUpload(false); setEditVideo(null); }}>Cancel</button>
-        <button className="btn-primary" onClick={editVideo ? handleEditSave : handleUpload}>
-          <Save className="w-4 h-4" />{editVideo ? 'Save Changes' : 'Upload Video'}
+        <button type="button" className="btn-secondary" onClick={() => { setShowForm(false); setEditingId(null); }} disabled={saving}>
+          Cancel
+        </button>
+        <button type="button" className="btn-primary" onClick={handleSave} disabled={saving || uploading}>
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {editingId ? 'Save Changes' : 'Save Video'}
         </button>
       </div>
     </div>
@@ -205,26 +434,37 @@ export default function VideoManagementPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="page-header">
         <div>
-          <h1 className="page-title flex items-center gap-2"><Film className="w-6 h-6 text-brand-500" /> Video Management</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Manage educational, wellness, and healthcare videos</p>
+          <h1 className="page-title flex items-center gap-2">
+            <Film className="w-6 h-6 text-brand-500" /> Video Management
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+            Video &amp; YouTube tracks from mood media (same catalog as Mood Media)
+          </p>
         </div>
-        {activeTab === 'videos'
-          ? <button className="btn-primary" onClick={() => { setShowUpload(true); setEditVideo(null); }}><Upload className="w-4 h-4" /> Upload Video</button>
-          : <button className="btn-primary" onClick={() => setShowCreateCat(true)}><Plus className="w-4 h-4" /> New Category</button>}
+        {activeTab === 'videos' && (
+          <button type="button" className="btn-primary" onClick={openCreate}>
+            <Upload className="w-4 h-4" /> Add Video
+          </button>
+        )}
       </div>
 
-      {/* Stats */}
+      {error && (
+        <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-700 dark:text-red-400">
+          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         {([
-          { label: 'Total Videos', value: stats.total, icon: <Film className="w-4 h-4" />, color: 'text-brand-600', bg: 'bg-brand-50 dark:bg-brand-900/20' },
-          { label: 'Active Categories', value: stats.cats, icon: <FolderOpen className="w-4 h-4" />, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-900/20' },
-          { label: 'Published', value: stats.published, icon: <Eye className="w-4 h-4" />, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-          { label: 'Drafts', value: stats.draft, icon: <Edit2 className="w-4 h-4" />, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/20' },
-          { label: 'Featured', value: stats.featured, icon: <Star className="w-4 h-4" />, color: 'text-yellow-600', bg: 'bg-yellow-50 dark:bg-yellow-900/20' },
-        ] as const).map(s => (
+          { label: 'Total Videos', value: loading ? '—' : stats.total, icon: <Film className="w-4 h-4" />, color: 'text-brand-600', bg: 'bg-brand-50 dark:bg-brand-900/20' },
+          { label: 'Categories', value: stats.cats, icon: <FolderOpen className="w-4 h-4" />, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-900/20' },
+          { label: 'Published', value: loading ? '—' : stats.published, icon: <Eye className="w-4 h-4" />, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+          { label: 'Drafts', value: loading ? '—' : stats.draft, icon: <Edit2 className="w-4 h-4" />, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+          { label: 'YouTube', value: loading ? '—' : stats.youtube, icon: <Youtube className="w-4 h-4" />, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-900/20' },
+        ] as const).map((s) => (
           <div key={s.label} className="card p-4 flex items-center gap-3">
             <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0', s.bg)}>
               <span className={s.color}>{s.icon}</span>
@@ -237,42 +477,69 @@ export default function VideoManagementPage() {
         ))}
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit">
-        {(['videos', 'categories'] as const).map(t => (
-          <button key={t} onClick={() => setActiveTab(t)}
-            className={cn('px-5 py-2 rounded-lg text-sm font-medium capitalize transition-all',
-              activeTab === t ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700')}>
-            {t === 'videos' ? `Videos (${videos.length})` : `Categories (${categories.length})`}
+        {(['videos', 'categories'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setActiveTab(t)}
+            className={cn(
+              'px-5 py-2 rounded-lg text-sm font-medium capitalize transition-all',
+              activeTab === t
+                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700',
+            )}
+          >
+            {t === 'videos' ? `Videos (${videos.length})` : `Categories (${CATEGORIES.length})`}
           </button>
         ))}
       </div>
 
-      {/* ── VIDEOS TAB ── */}
       {activeTab === 'videos' && (
         <div className="space-y-4">
-          {uploadPanel}
+          {formPanel}
 
-          {/* Filter bar */}
           <div className="card p-4 space-y-3">
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input className="input-field pl-9" placeholder="Search videos, tags..." value={search} onChange={e => setSearch(e.target.value)} />
+                <input
+                  className="input-field pl-9"
+                  placeholder="Search videos..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
               </div>
-              <select className="input-field w-auto" value={catFilter} onChange={e => setCatFilter(e.target.value)}>
+              <select className="input-field w-auto" value={catFilter} onChange={(e) => setCatFilter(e.target.value)}>
                 <option value="all">All Categories</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                {CATEGORIES.map((c) => (
+                  <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                ))}
               </select>
-              <select className="input-field w-auto" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+              <select className="input-field w-auto" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                 <option value="all">All Status</option>
                 <option value="published">Published</option>
                 <option value="draft">Draft</option>
               </select>
+              <select className="input-field w-auto" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                <option value="all">All Types</option>
+                <option value="youtube">YouTube</option>
+                <option value="video">Uploaded</option>
+              </select>
               <div className="flex gap-1">
-                {(['list', 'grid'] as const).map(m => (
-                  <button key={m} onClick={() => setViewMode(m)} className={cn('p-2 rounded-lg border transition-colors', viewMode === m ? 'bg-brand-50 border-brand-300 text-brand-600 dark:bg-brand-900/20 dark:border-brand-700' : 'border-slate-200 dark:border-slate-700 text-slate-400')}>
-                    {m === 'list' ? <List className="w-4 h-4" /> : <Grid3X3 className="w-4 h-4" />}
+                {(['list', 'grid'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setViewMode(m)}
+                    className={cn(
+                      'p-2 rounded-lg border transition-colors',
+                      viewMode === m
+                        ? 'bg-brand-50 border-brand-300 text-brand-600 dark:bg-brand-900/20 dark:border-brand-700'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-400',
+                    )}
+                  >
+                    {m === 'list' ? 'List' : 'Grid'}
                   </button>
                 ))}
               </div>
@@ -280,72 +547,148 @@ export default function VideoManagementPage() {
             {selected.size > 0 && (
               <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <span className="text-xs font-semibold text-brand-600">{selected.size} selected</span>
-                <select className="input-field w-auto text-xs py-1" value={bulkCat} onChange={e => setBulkCat(e.target.value)}>
+                <select className="input-field w-auto text-xs py-1" value={bulkCat} onChange={(e) => setBulkCat(e.target.value)}>
                   <option value="">Move to category...</option>
-                  {categories.filter(c => c.status === 'active').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {CATEGORIES.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
                 </select>
-                <button className="btn-secondary text-xs py-1 px-3" onClick={bulkUpdateCat} disabled={!bulkCat}>Apply Move</button>
-                <button className="btn-danger text-xs py-1 px-3" onClick={bulkDelete}><Trash2 className="w-3.5 h-3.5" /> Delete Selected</button>
-                <button className="text-xs text-slate-400 hover:text-slate-600 transition-colors" onClick={() => setSelected(new Set())}>Clear</button>
+                <button type="button" className="btn-secondary text-xs py-1 px-3" onClick={bulkUpdateCat} disabled={!bulkCat || saving}>
+                  Apply Move
+                </button>
+                <button type="button" className="btn-danger text-xs py-1 px-3" onClick={bulkDelete} disabled={saving}>
+                  <Trash2 className="w-3.5 h-3.5" /> Delete Selected
+                </button>
+                <button type="button" className="text-xs text-slate-400 hover:text-slate-600" onClick={() => setSelected(new Set())}>
+                  Clear
+                </button>
               </div>
             )}
           </div>
 
-          {/* List view */}
-          {viewMode === 'list' && (
+          {loading ? (
+            <div className="card py-16 text-center text-slate-400">
+              <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+              Loading videos...
+            </div>
+          ) : viewMode === 'list' ? (
             <div className="card overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
                       <th className="px-4 py-3 w-8">
-                        <button onClick={selectAll}>{selected.size === filtered.length && filtered.length > 0 ? <CheckSquare className="w-4 h-4 text-brand-500" /> : <Square className="w-4 h-4 text-slate-400" />}</button>
+                        <button type="button" onClick={selectAll}>
+                          {selected.size === filtered.length && filtered.length > 0
+                            ? <CheckSquare className="w-4 h-4 text-brand-500" />
+                            : <Square className="w-4 h-4 text-slate-400" />}
+                        </button>
                       </th>
-                      {['Video', 'Category', 'Tags', 'Duration', 'Views', 'Status', 'Featured', 'Actions'].map(h => (
-                        <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">{h}</th>
+                      {['Video', 'Category', 'Type', 'Duration', 'Views', 'Status', 'Actions'].map((h) => (
+                        <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                          {h}
+                        </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {filtered.map(v => (
-                      <tr key={v.id} className={cn('hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors', selected.has(v.id) && 'bg-brand-50/40 dark:bg-brand-900/10')}>
-                        <td className="px-4 py-3"><button onClick={() => toggleSelect(v.id)}>{selected.has(v.id) ? <CheckSquare className="w-4 h-4 text-brand-500" /> : <Square className="w-4 h-4 text-slate-300" />}</button></td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl flex-shrink-0">{v.emoji}</div>
-                            <div>
-                              <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 line-clamp-1 min-w-0 max-w-[200px]">{v.title}</p>
-                              <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5 max-w-[200px]">{v.description}</p>
+                    {filtered.map((v) => {
+                      const meta = categoryMeta(v.category);
+                      return (
+                        <tr
+                          key={v.id}
+                          className={cn(
+                            'hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors',
+                            selected.has(v.id) && 'bg-brand-50/40 dark:bg-brand-900/10',
+                          )}
+                        >
+                          <td className="px-4 py-3">
+                            <button type="button" onClick={() => toggleSelect(v.id)}>
+                              {selected.has(v.id)
+                                ? <CheckSquare className="w-4 h-4 text-brand-500" />
+                                : <Square className="w-4 h-4 text-slate-300" />}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl flex-shrink-0">
+                                {meta.icon}
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 line-clamp-1 max-w-[220px]">
+                                  {v.title}
+                                </p>
+                                <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5 max-w-[220px]">
+                                  {v.subtitle || '—'}
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3"><span className="text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">{v.category}</span></td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1 max-w-[120px]">
-                            {v.tags.slice(0, 2).map(t => <span key={t} className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-full flex items-center gap-0.5"><Tag className="w-2.5 h-2.5" />{t}</span>)}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3"><span className="text-xs text-slate-500 flex items-center gap-1 whitespace-nowrap"><Clock className="w-3 h-3" />{v.duration}</span></td>
-                        <td className="px-4 py-3"><span className="text-xs text-slate-500 flex items-center gap-1 whitespace-nowrap"><Eye className="w-3 h-3" />{v.views.toLocaleString()}</span></td>
-                        <td className="px-4 py-3">
-                          <button onClick={() => togglePublish(v.id)}>
-                            <Badge variant={v.status === 'published' ? 'success' : 'default'} size="sm">{v.status === 'published' ? 'Published' : 'Draft'}</Badge>
-                          </button>
-                        </td>
-                        <td className="px-4 py-3">
-                          <button onClick={() => toggleFeatured(v.id)} className={cn('transition-colors', v.featured ? 'text-yellow-500' : 'text-slate-300 hover:text-yellow-400')}>
-                            <Star className="w-4 h-4" fill={v.featured ? 'currentColor' : 'none'} />
-                          </button>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => { setEditVideo(v); setShowUpload(false); }} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-brand-600 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
-                            <button onClick={() => deleteVideo(v.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                          </div>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                            {meta.name}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant={v.media_type === 'youtube' ? 'danger' : 'teal'} size="sm">
+                              {v.media_type === 'youtube' ? (
+                                <span className="flex items-center gap-1"><Youtube className="w-3 h-3" /> YouTube</span>
+                              ) : (
+                                <span className="flex items-center gap-1"><Video className="w-3 h-3" /> Video</span>
+                              )}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-xs text-slate-500 flex items-center gap-1 whitespace-nowrap">
+                              <Clock className="w-3 h-3" />{formatDuration(v)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-xs text-slate-400">—</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <button type="button" onClick={() => togglePublish(v)}>
+                              <Badge variant={v.is_active ? 'success' : 'default'} size="sm">
+                                {v.is_active ? 'Published' : 'Draft'}
+                              </Badge>
+                            </button>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1">
+                              {v.media_url && (
+                                <a
+                                  href={v.media_url.startsWith('http') ? v.media_url : `https://www.youtube.com/watch?v=${v.media_url}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-brand-600"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => openEdit(v)}
+                                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-brand-600"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(v.id)}
+                                className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {filtered.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-400">
+                          No videos found. Add a YouTube or uploaded video to get started.
                         </td>
                       </tr>
-                    ))}
-                    {filtered.length === 0 && <tr><td colSpan={9} className="px-4 py-12 text-center text-sm text-slate-400">No videos match your filters</td></tr>}
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -353,152 +696,122 @@ export default function VideoManagementPage() {
                 <p className="text-xs text-slate-500">Showing {filtered.length} of {videos.length} videos</p>
               </div>
             </div>
-          )}
-
-          {/* Grid view */}
-          {viewMode === 'grid' && (
+          ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filtered.map(v => (
-                <div key={v.id} className={cn('card p-4 flex flex-col gap-3 relative', selected.has(v.id) && 'ring-2 ring-brand-400')}>
-                  <button onClick={() => toggleSelect(v.id)} className="absolute top-3 left-3 z-10">
-                    {selected.has(v.id) ? <CheckSquare className="w-4 h-4 text-brand-500" /> : <Square className="w-4 h-4 text-slate-300 bg-white rounded" />}
-                  </button>
-                  <div className="w-full h-28 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center text-5xl">{v.emoji}</div>
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 line-clamp-2 flex-1">{v.title}</p>
-                      <button onClick={() => toggleFeatured(v.id)} className={cn('flex-shrink-0 mt-0.5', v.featured ? 'text-yellow-500' : 'text-slate-300')}><Star className="w-4 h-4" fill={v.featured ? 'currentColor' : 'none'} /></button>
+              {filtered.map((v) => {
+                const meta = categoryMeta(v.category);
+                return (
+                  <div key={v.id} className={cn('card p-4 flex flex-col gap-3 relative', selected.has(v.id) && 'ring-2 ring-brand-400')}>
+                    <button type="button" onClick={() => toggleSelect(v.id)} className="absolute top-3 left-3 z-10">
+                      {selected.has(v.id)
+                        ? <CheckSquare className="w-4 h-4 text-brand-500" />
+                        : <Square className="w-4 h-4 text-slate-300 bg-white rounded" />}
+                    </button>
+                    <div className="w-full h-28 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center text-5xl">
+                      {meta.icon}
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{v.description}</p>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 line-clamp-2">{v.title}</p>
+                      <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{v.subtitle || '—'}</p>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-slate-400">
+                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDuration(v)}</span>
+                      <span>—</span>
+                      <button type="button" onClick={() => togglePublish(v)}>
+                        <Badge variant={v.is_active ? 'success' : 'default'} size="sm">
+                          {v.is_active ? 'published' : 'draft'}
+                        </Badge>
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" className="btn-secondary flex-1 text-xs py-1.5" onClick={() => openEdit(v)}>
+                        <Edit2 className="w-3.5 h-3.5" /> Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary text-xs py-1.5 px-3 text-red-500 hover:bg-red-50 border-red-200"
+                        onClick={() => handleDelete(v.id)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{v.duration}</span>
-                    <span className="flex items-center gap-1"><Eye className="w-3 h-3" />{v.views.toLocaleString()}</span>
-                    <button onClick={() => togglePublish(v.id)}><Badge variant={v.status === 'published' ? 'success' : 'default'} size="sm">{v.status}</Badge></button>
-                  </div>
-                  <div className="flex gap-2">
-                    <button className="btn-secondary flex-1 text-xs py-1.5" onClick={() => { setEditVideo(v); setShowUpload(false); }}><Edit2 className="w-3.5 h-3.5" /> Edit</button>
-                    <button className="btn-secondary text-xs py-1.5 px-3 text-red-500 hover:bg-red-50 border-red-200" onClick={() => deleteVideo(v.id)}><Trash2 className="w-3.5 h-3.5" /></button>
-                  </div>
-                </div>
-              ))}
-              {filtered.length === 0 && <div className="col-span-full py-12 text-center text-sm text-slate-400">No videos match your filters</div>}
+                );
+              })}
+              {filtered.length === 0 && (
+                <div className="col-span-full py-12 text-center text-sm text-slate-400">No videos match your filters</div>
+              )}
             </div>
           )}
 
-          {/* Most Viewed + Recently Added */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="card p-5">
-              <p className="section-title mb-4 flex items-center gap-2"><BarChart2 className="w-4 h-4 text-brand-500" /> Most Viewed</p>
-              <div className="space-y-3">
-                {stats.topViewed.map((v, i) => (
+          <div className="card p-5">
+            <p className="section-title mb-4 flex items-center gap-2">
+              <Film className="w-4 h-4 text-teal-500" /> Recently Added
+            </p>
+            <div className="space-y-3">
+              {stats.recent.length === 0 && (
+                <p className="text-sm text-slate-400">No videos yet</p>
+              )}
+              {stats.recent.map((v) => {
+                const meta = categoryMeta(v.category);
+                return (
                   <div key={v.id} className="flex items-center gap-3">
-                    <span className="text-2xl font-black text-slate-200 dark:text-slate-700 w-7 text-center leading-none">{i + 1}</span>
-                    <div className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl flex-shrink-0">{v.emoji}</div>
+                    <div className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl flex-shrink-0">
+                      {meta.icon}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">{v.title}</p>
-                      <p className="text-xs text-slate-400">{v.views.toLocaleString()} views</p>
+                      <p className="text-xs text-slate-400">
+                        {v.created_at ? new Date(v.created_at).toLocaleDateString() : '—'}
+                      </p>
                     </div>
-                    <Badge variant="default" size="sm">{v.category}</Badge>
+                    <Badge variant={v.is_active ? 'success' : 'default'} size="sm">
+                      {v.is_active ? 'published' : 'draft'}
+                    </Badge>
                   </div>
-                ))}
-              </div>
-            </div>
-            <div className="card p-5">
-              <p className="section-title mb-4 flex items-center gap-2"><Film className="w-4 h-4 text-teal-500" /> Recently Added</p>
-              <div className="space-y-3">
-                {stats.recent.map(v => (
-                  <div key={v.id} className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl flex-shrink-0">{v.emoji}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">{v.title}</p>
-                      <p className="text-xs text-slate-400">{v.uploadedAt}</p>
-                    </div>
-                    <Badge variant={v.status === 'published' ? 'success' : 'default'} size="sm">{v.status}</Badge>
-                  </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           </div>
         </div>
       )}
 
-      {/* ── CATEGORIES TAB ── */}
       {activeTab === 'categories' && (
         <div className="space-y-4">
-          {/* Create/Edit panel */}
-          {(showCreateCat || editCat) && (
-            <div className="card p-6 border-2 border-violet-200 dark:border-violet-800">
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="section-title">{editCat ? `Edit: ${editCat.name}` : 'New Category'}</h2>
-                <button onClick={() => { setShowCreateCat(false); setEditCat(null); }} className="text-slate-400 hover:text-slate-600 transition-colors"><X className="w-4 h-4" /></button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Category Name <span className="text-red-500">*</span></label>
-                  <input className="input-field" placeholder="e.g. Wellness"
-                    value={editCat ? editCat.name : newCat.name}
-                    onChange={e => editCat ? setEditCat({ ...editCat, name: e.target.value }) : setNewCat(c => ({ ...c, name: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Icon</label>
-                  <div className="flex flex-wrap gap-2">
-                    {CAT_ICONS.map(ic => (
-                      <button key={ic} onClick={() => editCat ? setEditCat({ ...editCat, icon: ic }) : setNewCat(c => ({ ...c, icon: ic }))}
-                        className={cn('text-xl w-9 h-9 rounded-lg border-2 flex items-center justify-center transition-all',
-                          (editCat ? editCat.icon : newCat.icon) === ic ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20' : 'border-slate-200 dark:border-slate-700 hover:border-slate-400'
-                        )}>{ic}</button>
-                    ))}
-                  </div>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Description</label>
-                  <input className="input-field" placeholder="Brief description of this category"
-                    value={editCat ? editCat.description : newCat.description}
-                    onChange={e => editCat ? setEditCat({ ...editCat, description: e.target.value }) : setNewCat(c => ({ ...c, description: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Status</label>
-                  <select className="input-field w-auto"
-                    value={editCat ? editCat.status : newCat.status}
-                    onChange={e => { const v = e.target.value as CatStatus; editCat ? setEditCat({ ...editCat, status: v }) : setNewCat(c => ({ ...c, status: v })); }}>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 mt-5">
-                <button className="btn-secondary" onClick={() => { setShowCreateCat(false); setEditCat(null); }}>Cancel</button>
-                <button className="btn-primary" onClick={editCat ? handleSaveCat : handleCreateCat}><Save className="w-4 h-4" />{editCat ? 'Save Changes' : 'Create Category'}</button>
-              </div>
-            </div>
-          )}
-
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Categories are fixed by the mood media catalog (bhajans, meditation, nature sounds, jokes &amp; fun). Counts below are for video/YouTube tracks only.
+          </p>
           <div className="card p-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input className="input-field pl-9" placeholder="Search categories..." value={catSearch} onChange={e => setCatSearch(e.target.value)} />
+              <input
+                className="input-field pl-9"
+                placeholder="Search categories..."
+                value={catSearch}
+                onChange={(e) => setCatSearch(e.target.value)}
+              />
             </div>
           </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredCats.map(cat => {
-              const catVids = videos.filter(v => v.categoryId === cat.id);
-              const published = catVids.filter(v => v.status === 'published').length;
+            {filteredCats.map((cat) => {
+              const catVids = videos.filter((v) => v.category === cat.id);
+              const published = catVids.filter((v) => v.is_active).length;
               return (
-                <div key={cat.id} className={cn('card p-5', cat.status === 'inactive' && 'opacity-60')}>
+                <div key={cat.id} className="card p-5">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center text-2xl">{cat.icon}</div>
+                      <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center text-2xl">
+                        {cat.icon}
+                      </div>
                       <div>
                         <p className="font-bold text-slate-900 dark:text-white text-sm">{cat.name}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">Since {cat.createdAt}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{cat.id}</p>
                       </div>
                     </div>
-                    <Badge variant={cat.status === 'active' ? 'success' : 'default'} size="sm">{cat.status}</Badge>
+                    <Badge variant="success" size="sm">active</Badge>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 line-clamp-2">{cat.description}</p>
-                  <div className="grid grid-cols-2 gap-2 mb-4">
+                  <div className="grid grid-cols-2 gap-2">
                     <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-2 text-center">
                       <p className="text-lg font-bold text-slate-900 dark:text-white">{catVids.length}</p>
                       <p className="text-[10px] text-slate-400">Total Videos</p>
@@ -507,15 +820,6 @@ export default function VideoManagementPage() {
                       <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{published}</p>
                       <p className="text-[10px] text-slate-400">Published</p>
                     </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button className="btn-secondary flex-1 text-xs py-1.5" onClick={() => { setEditCat(cat); setShowCreateCat(false); }}><Edit2 className="w-3.5 h-3.5" /> Edit</button>
-                    <button className="btn-secondary text-xs py-1.5 px-3" onClick={() => toggleCatStatus(cat.id)}>
-                      {cat.status === 'active' ? <ToggleRight className="w-4 h-4 text-emerald-500" /> : <ToggleLeft className="w-4 h-4 text-slate-400" />}
-                    </button>
-                    {catVids.length === 0 && (
-                      <button className="btn-secondary text-xs py-1.5 px-3 text-red-500 hover:bg-red-50 border-red-200" onClick={() => deleteCat(cat.id)}><Trash2 className="w-3.5 h-3.5" /></button>
-                    )}
                   </div>
                 </div>
               );

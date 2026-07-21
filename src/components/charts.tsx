@@ -123,7 +123,7 @@ export function SOSChart({ data }: { data: Record<string, unknown>[] }) {
         <Legend iconSize={8} wrapperStyle={{ fontSize: 12 }} />
         <Bar dataKey="alerts" name="Total" fill="#0284c7" radius={[3, 3, 0, 0]} />
         <Bar dataKey="resolved" name="Resolved" fill="#10b981" radius={[3, 3, 0, 0]} />
-        <Bar dataKey="escalated" name="Escalated" fill="#ef4444" radius={[3, 3, 0, 0]} />
+        <Bar dataKey="cancelled" name="False Alarm" fill="#94a3b8" radius={[3, 3, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

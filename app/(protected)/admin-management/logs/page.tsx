@@ -28,6 +28,13 @@ const actionMeta: Record<string, { label: string; icon: React.ReactNode; color: 
   'inspiration.create': { label: 'Inspiration Created', icon: <CheckCircle className="w-3.5 h-3.5" />, color: 'text-teal-600' },
   'inspiration.update': { label: 'Inspiration Updated', icon: <Edit2 className="w-3.5 h-3.5" />, color: 'text-amber-600' },
   'inspiration.delete': { label: 'Inspiration Deleted', icon: <Trash2 className="w-3.5 h-3.5" />, color: 'text-red-600' },
+  'admin.create': { label: 'Admin Created', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-violet-600' },
+  'admin.update': { label: 'Admin Updated', icon: <Edit2 className="w-3.5 h-3.5" />, color: 'text-amber-600' },
+  'admin.password_reset': { label: 'Admin Password Reset', icon: <RotateCcw className="w-3.5 h-3.5" />, color: 'text-amber-600' },
+  'admin.delete': { label: 'Admin Deleted', icon: <Trash2 className="w-3.5 h-3.5" />, color: 'text-red-600' },
+  'role.create': { label: 'Role Created', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-violet-600' },
+  'role.update': { label: 'Role Updated', icon: <Edit2 className="w-3.5 h-3.5" />, color: 'text-amber-600' },
+  'role.delete': { label: 'Role Deleted', icon: <Trash2 className="w-3.5 h-3.5" />, color: 'text-red-600' },
 };
 
 const ALL_ACTIONS = ['All Actions', ...Object.keys(actionMeta)] as const;
@@ -35,6 +42,8 @@ const ALL_ACTIONS = ['All Actions', ...Object.keys(actionMeta)] as const;
 const moduleForTargetType: Record<string, string> = {
   auth: 'Auth',
   user: 'User Management',
+  admin_user: 'Admin Management',
+  admin_role: 'Admin Management',
   notification: 'Notifications',
   doctor: 'Content Management',
   mood_media: 'Content Management',
@@ -42,7 +51,7 @@ const moduleForTargetType: Record<string, string> = {
   inspiration: 'Content Management',
 };
 
-const ALL_MODULES = ['All Modules', 'Auth', 'User Management', 'Content Management', 'Notifications'];
+const ALL_MODULES = ['All Modules', 'Auth', 'User Management', 'Admin Management', 'Content Management', 'Notifications'];
 
 const statusBadge: Record<string, { variant: 'success' | 'danger' | 'warning'; label: string }> = {
   success: { variant: 'success', label: 'Success' },

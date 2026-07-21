@@ -185,11 +185,124 @@ async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T
   return data as T;
 }
 
+export interface AdminLoginUser {
+  id: string;
+  username: string;
+  name: string;
+  email: string;
+  role: string;
+  role_id?: string | null;
+  permissions?: string[];
+}
+
 export async function adminLogin(username: string, password: string) {
-  return adminFetch<{ success: boolean; token?: string; user?: { username: string; role: string } }>('/login', {
+  return adminFetch<{ success: boolean; token?: string; user?: AdminLoginUser; error?: string }>('/login', {
     method: 'POST',
     body: JSON.stringify({ username, password }),
   });
+}
+
+// --- Dynamic roles ---
+
+export interface AdminRoleRecord {
+  id: string;
+  name: string;
+  label: string;
+  description: string;
+  permissions: string[];
+  status: 'active' | 'inactive';
+  is_system: boolean;
+  user_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export async function getAdminRoles(): Promise<{
+  success: boolean;
+  roles: AdminRoleRecord[];
+  permission_catalog: string[];
+}> {
+  return adminFetch('/roles');
+}
+
+export async function createAdminRole(body: {
+  label: string;
+  description?: string;
+  permissions: string[];
+  status?: 'active' | 'inactive';
+}): Promise<{ success: boolean; role: AdminRoleRecord }> {
+  return adminFetch('/roles', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function updateAdminRole(
+  id: string,
+  body: {
+    label?: string;
+    description?: string;
+    permissions?: string[];
+    status?: 'active' | 'inactive';
+  },
+): Promise<{ success: boolean; role: AdminRoleRecord }> {
+  return adminFetch(`/roles/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+}
+
+export async function deleteAdminRole(id: string): Promise<{ success: boolean }> {
+  return adminFetch(`/roles/${id}`, { method: 'DELETE' });
+}
+
+// --- Managed admin accounts (super_admin only) ---
+
+export interface ManagedAdminAccount {
+  id: string;
+  username: string;
+  email: string;
+  name: string;
+  role_id: string;
+  role: { id: string; name: string; label: string; permissions: string[]; status: string } | null;
+  status: 'active' | 'inactive';
+  last_login_at: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export async function getAdminAccounts(params?: { search?: string; status?: string }): Promise<{ success: boolean; admins: ManagedAdminAccount[] }> {
+  const query = new URLSearchParams();
+  if (params?.search?.trim()) query.set('search', params.search.trim());
+  if (params?.status && params.status !== 'all') query.set('status', params.status);
+  const qs = query.toString();
+  return adminFetch(`/admins${qs ? `?${qs}` : ''}`);
+}
+
+export async function createAdminAccount(body: {
+  username: string;
+  email: string;
+  name: string;
+  password: string;
+  role_id: string;
+}): Promise<{ success: boolean; admin: ManagedAdminAccount }> {
+  return adminFetch('/admins', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function updateAdminAccount(
+  id: string,
+  body: { name?: string; email?: string; status?: 'active' | 'inactive'; role_id?: string },
+): Promise<{ success: boolean; admin: ManagedAdminAccount }> {
+  return adminFetch(`/admins/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+}
+
+export async function resetAdminAccountPassword(
+  id: string,
+  password: string,
+): Promise<{ success: boolean }> {
+  return adminFetch(`/admins/${id}/password`, {
+    method: 'PATCH',
+    body: JSON.stringify({ password }),
+  });
+}
+
+export async function deleteAdminAccount(id: string): Promise<{ success: boolean }> {
+  return adminFetch(`/admins/${id}`, { method: 'DELETE' });
 }
 
 export async function adminLogout(): Promise<void> {
@@ -326,14 +439,22 @@ export interface AdminStatsResponse {
   };
 }
 
+/** Shape returned by GET /admin/api/analytics (top-level, not wrapped). */
 export interface AdminAnalyticsResponse {
-  success: boolean;
-  analytics: {
-    userGrowth: Array<{ date: string; elders: number; guardians: number }>;
-    medicineAdherence: Array<{ date: string; rate: number }>;
-    wellnessTrends: Array<{ date: string; averageMood: number }>;
-    sosAlertsByMonth: Array<{ month: string; count: number }>;
+  user_growth: { labels: string[]; data: number[] };
+  mood_dist: { labels: string[]; data: number[] };
+  check_in_dow: { labels: string[]; data: number[] };
+  med_category: { labels: string[]; data: number[] };
+  ai_by_day: {
+    labels: string[];
+    data: number[];
+    tokens: number[];
+    prompt_tokens: number[];
+    completion_tokens: number[];
   };
+  sos_by_day: { labels: string[]; alerts: number[]; resolved: number[]; cancelled: number[] };
+  care_by_type: { labels: string[]; data: number[] };
+  game_avg_scores: { labels: string[]; data: number[] };
 }
 
 export async function getAdminStats(): Promise<AdminStatsResponse> {
@@ -370,12 +491,52 @@ export async function getAdminMoods(params?: { page?: number; limit?: number }):
   return adminFetch<any>(`/moods?${query.toString()}`);
 }
 
-export async function getAdminAIConversations(params?: { page?: number; limit?: number; role?: string }): Promise<any> {
+export async function getAdminHealthReadings(params?: { page?: number; limit?: number; type?: string }): Promise<{
+  success: boolean;
+  readings?: Array<{
+    id: string;
+    user_id: string;
+    type: string;
+    value: number | null;
+    unit: string | null;
+    notes: string | null;
+    created_at: string;
+    user_name: string;
+    user_email: string;
+  }>;
+  error?: string;
+}> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.type) query.set('type', params.type);
+  return adminFetch(`/health-readings?${query.toString()}`);
+}
+
+export interface AIConversationRecord {
+  id: string;
+  user_id: string | null;
+  user_name: string;
+  role: string;
+  content: string;
+  content_preview: string;
+  provider: string | null;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+  created_at: string;
+}
+
+export async function getAdminAIConversations(params?: {
+  page?: number;
+  limit?: number;
+  role?: string;
+}): Promise<{ success: boolean; conversations: AIConversationRecord[]; error?: string }> {
   const query = new URLSearchParams();
   if (params?.page) query.set('page', String(params.page));
   if (params?.limit) query.set('limit', String(params.limit));
   if (params?.role) query.set('role', params.role);
-  return adminFetch<any>(`/ai-conversations?${query.toString()}`);
+  return adminFetch(`/ai-conversations?${query.toString()}`);
 }
 
 export async function getAdminCareEvents(params?: { page?: number; limit?: number; type?: string; user_id?: string }): Promise<any> {
@@ -406,10 +567,18 @@ export async function getAdminMindGames(params?: { page?: number; limit?: number
 }
 
 // --- System Broadcast ---
-export async function broadcastMessage(message: string, title?: string): Promise<{ success: boolean; sent: number; results?: any }> {
-  return adminFetch<{ success: boolean; sent: number; results?: any }>('/broadcast', {
+export async function broadcastMessage(
+  message: string,
+  title?: string,
+  audience?: 'all' | 'elders' | 'guardians',
+): Promise<{ success: boolean; sent: number; audience?: string; results?: any }> {
+  return adminFetch<{ success: boolean; sent: number; audience?: string; results?: any }>('/broadcast', {
     method: 'POST',
-    body: JSON.stringify({ title: title || 'System Broadcast', body: message }),
+    body: JSON.stringify({
+      title: title || 'System Broadcast',
+      body: message,
+      audience: audience || 'all',
+    }),
   });
 }
 
@@ -492,12 +661,21 @@ export async function deleteDoctor(id: string): Promise<any> {
 }
 
 // --- Mood Media CRUD ---
-export async function getMoodMedia(params?: { page?: number; limit?: number; category?: string; search?: string }): Promise<any> {
+export async function getMoodMedia(params?: {
+  page?: number;
+  limit?: number;
+  category?: string;
+  search?: string;
+  media_type?: string;
+  active?: string;
+}): Promise<any> {
   const query = new URLSearchParams();
   if (params?.page) query.set('page', String(params.page));
   if (params?.limit) query.set('limit', String(params.limit));
   if (params?.category) query.set('category', params.category);
   if (params?.search?.trim()) query.set('search', params.search.trim());
+  if (params?.media_type) query.set('media_type', params.media_type);
+  if (params?.active !== undefined) query.set('active', params.active);
   return adminFetch<any>(`/mood-media?${query.toString()}`);
 }
 
@@ -772,7 +950,25 @@ export async function getPaymentOrder(id: string): Promise<{ success: boolean; o
   return adminFetch(`/payments/orders/${id}`);
 }
 
-export async function refundPayment(paymentId: string, data?: { amount?: number; speed?: string; reason?: string }): Promise<{ success: boolean; refund?: unknown; error?: string }> {
+export interface PaymentRefund {
+  id: string;
+  payment_id: string;
+  razorpay_refund_id: string;
+  amount: number;
+  currency: string;
+  speed: string;
+  status: string;
+  reason: string | null;
+  initiated_by_admin: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Admin refund. `paymentId` is `payments.id` (not the order id). Omitting `amount` refunds the full captured amount. */
+export async function refundPayment(
+  paymentId: string,
+  data?: { amount?: number; speed?: 'normal' | 'instant'; reason?: string },
+): Promise<{ success: boolean; refund: PaymentRefund; error?: string }> {
   return adminFetch(`/payments/${paymentId}/refund`, { method: 'POST', body: JSON.stringify(data ?? {}) });
 }
 
@@ -781,6 +977,7 @@ export interface SosAlertRecord {
   id: string;
   user_id: string;
   user_name: string;
+  guardian_name?: string;
   triggered_at: string;
   resolved_at: string | null;
   status: 'active' | 'resolved' | 'cancelled';
@@ -793,6 +990,16 @@ export async function getAdminSosAlerts(params?: { page?: number; limit?: number
   if (params?.limit) query.set('limit', String(params.limit));
   if (params?.status) query.set('status', params.status);
   return adminFetch(`/sos-alerts?${query.toString()}`);
+}
+
+export async function updateAdminSosAlert(
+  id: string,
+  body: { status: 'active' | 'resolved' | 'cancelled' },
+): Promise<{ success: boolean; alert?: SosAlertRecord; error?: string }> {
+  return adminFetch(`/sos-alerts/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
 }
 
 // --- Notifications (inbox / broadcast log) ---

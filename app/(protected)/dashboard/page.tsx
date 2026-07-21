@@ -93,17 +93,13 @@ export default function DashboardPage() {
       }))
     : [];
 
-  const sosData = analytics && analytics.ai_by_day
-    ? analytics.ai_by_day.labels.map((label: string, index: number) => {
-        const val = analytics.ai_by_day.data[index] || 0;
-        const alerts = Math.round(val * 0.05) + 1;
-        return {
-          name: label.slice(5),
-          alerts,
-          resolved: Math.round(alerts * 0.8),
-          escalated: Math.max(0, alerts - Math.round(alerts * 0.8)),
-        };
-      })
+  const sosData = analytics && analytics.sos_by_day
+    ? analytics.sos_by_day.labels.map((label: string, index: number) => ({
+        name: label.slice(5),
+        alerts: Number(analytics.sos_by_day.alerts?.[index]) || 0,
+        resolved: Number(analytics.sos_by_day.resolved?.[index]) || 0,
+        cancelled: Number(analytics.sos_by_day.cancelled?.[index]) || 0,
+      }))
     : [];
 
   const aiUsage = analytics && analytics.ai_by_day

@@ -19,13 +19,13 @@ export default function AIUsagePage() {
       setError(null);
       try {
         const [convRes, analyticsRes] = await Promise.all([
-          getAdminAIConversations({ limit: 200 }),
+          getAdminAIConversations({ limit: 100 }),
           getAdminAnalytics(),
         ]);
         const rows = convRes?.conversations || [];
         setConversations(rows);
 
-        const aiByDay = (analyticsRes as any)?.ai_by_day;
+        const aiByDay = analyticsRes?.ai_by_day;
         if (aiByDay?.labels) {
           setChartData(
             aiByDay.labels.map((label: string, index: number) => ({
@@ -50,25 +50,23 @@ export default function AIUsagePage() {
     () => conversations.filter(c => c.total_tokens != null),
     [conversations],
   );
-  const totalTokens = useMemo(
-    () => withTokens.reduce((sum, c) => sum + (Number(c.total_tokens) || 0), 0),
-    [withTokens],
-  );
-  const promptTokens = useMemo(
-    () => withTokens.reduce((sum, c) => sum + (Number(c.prompt_tokens) || 0), 0),
-    [withTokens],
-  );
-  const completionTokens = useMemo(
-    () => withTokens.reduce((sum, c) => sum + (Number(c.completion_tokens) || 0), 0),
-    [withTokens],
-  );
-  const avgTokens = useMemo(
-    () => (withTokens.length ? Math.round(totalTokens / withTokens.length) : 0),
-    [withTokens.length, totalTokens],
-  );
   const weekTokens = useMemo(
     () => chartData.reduce((sum, d) => sum + d.tokens, 0),
     [chartData],
+  );
+  const promptTokens = useMemo(
+    () => chartData.reduce((sum, d) => sum + d.prompt, 0),
+    [chartData],
+  );
+  const completionTokens = useMemo(
+    () => chartData.reduce((sum, d) => sum + d.completion, 0),
+    [chartData],
+  );
+  const avgTokens = useMemo(
+    () => (withTokens.length
+      ? Math.round(withTokens.reduce((sum, c) => sum + (Number(c.total_tokens) || 0), 0) / withTokens.length)
+      : 0),
+    [withTokens],
   );
 
   return (
@@ -90,9 +88,9 @@ export default function AIUsagePage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Tokens (7 days)', value: loading ? '...' : weekTokens.toLocaleString(), icon: <Hash className="w-5 h-5" />, color: 'text-teal-600', bg: 'bg-teal-50 dark:bg-teal-900/20' },
-          { label: 'Prompt Tokens', value: loading ? '...' : promptTokens.toLocaleString(), icon: <ArrowUpFromLine className="w-5 h-5" />, color: 'text-teal-700', bg: 'bg-teal-50 dark:bg-teal-900/20' },
-          { label: 'Completion Tokens', value: loading ? '...' : completionTokens.toLocaleString(), icon: <ArrowDownToLine className="w-5 h-5" />, color: 'text-brand-600', bg: 'bg-brand-50 dark:bg-brand-900/20' },
-          { label: 'Avg Tokens / Turn', value: loading ? '...' : avgTokens.toLocaleString(), icon: <Gauge className="w-5 h-5" />, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-900/20' },
+          { label: 'Prompt Tokens (7d)', value: loading ? '...' : promptTokens.toLocaleString(), icon: <ArrowUpFromLine className="w-5 h-5" />, color: 'text-teal-700', bg: 'bg-teal-50 dark:bg-teal-900/20' },
+          { label: 'Completion Tokens (7d)', value: loading ? '...' : completionTokens.toLocaleString(), icon: <ArrowDownToLine className="w-5 h-5" />, color: 'text-brand-600', bg: 'bg-brand-50 dark:bg-brand-900/20' },
+          { label: 'Avg Tokens / Turn', value: loading ? '...' : (avgTokens ? avgTokens.toLocaleString() : '—'), icon: <Gauge className="w-5 h-5" />, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-900/20' },
         ].map(s => (
           <div key={s.label} className={cn('card p-4', s.bg)}>
             <div className={cn('mb-2', s.color)}>{s.icon}</div>

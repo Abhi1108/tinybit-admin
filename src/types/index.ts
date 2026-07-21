@@ -1,16 +1,19 @@
+/** System role names; custom roles use free-form `name` strings. */
 export type AdminRole =
   | 'super_admin'
   | 'operations_admin'
-  | 'healthcare_admin'
   | 'content_manager'
   | 'support_manager'
-  | 'moderator';
+  | 'moderator'
+  | string;
 
 export interface AdminUser {
   id: string;
   name: string;
   email: string;
+  username?: string;
   role: AdminRole;
+  roleId?: string | null;
   avatar?: string;
   lastLogin: string;
   status: 'active' | 'inactive';
@@ -132,7 +135,7 @@ export interface AuditLog {
   id: string;
   adminId: string;
   adminName: string;
-  adminRole: AdminRole;
+  adminRole: string;
   action: string;
   module: string;
   details: string;

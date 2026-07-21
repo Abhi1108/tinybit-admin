@@ -506,7 +506,6 @@ export function ProgressBar({ value, max = 100, color = 'blue', size = 'md', sho
 const ROLE_CONFIG: Record<string, { label: string; variant: BadgeProps['variant'] }> = {
   super_admin: { label: 'Super Admin', variant: 'danger' },
   operations_admin: { label: 'Operations', variant: 'info' },
-  healthcare_admin: { label: 'Healthcare', variant: 'teal' },
   content_manager: { label: 'Content Mgr', variant: 'purple' },
   support_manager: { label: 'Support Mgr', variant: 'warning' },
   moderator: { label: 'Moderator', variant: 'default' },

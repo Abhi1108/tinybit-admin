@@ -23,6 +23,13 @@ provide.
 - MySQL schema work in `tinybit-server`: `mysql/schema.sql` (CREATE for new DBs) and
   `mysql/patches/*.sql` (ALTER for existing DBs) — that is the correct ops workflow
 
+## Admin roles
+
+- **Super Admin** — shared env credentials; manages Accounts + Roles (`/admin/api/admins*`, `/admin/api/roles` mutations).
+- **Managed admins** — `admin_users` with `role_id` → `admin_roles` (seeded + custom). Nav/API gated by `permissions[]`.
+- Never hardcode every login as `super_admin`. Use role + permissions from `POST /admin/api/login`.
+- Primary Roles UI: Admin Management → Roles (`AdminRolesClient`).
+
 ## Related
 
 See Working Principles and What NOT To Do in `CLAUDE.md`.

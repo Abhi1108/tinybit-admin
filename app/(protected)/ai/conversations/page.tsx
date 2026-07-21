@@ -6,7 +6,7 @@ import { getAdminAIConversations } from '@/src/services/adminApi';
 
 interface ConversationRow {
   id: string;
-  user_id: string;
+  user_id: string | null;
   user_name: string;
   role: string;
   content: string;

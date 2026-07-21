@@ -24,6 +24,8 @@ interface CheckIn {
   physical_activity: string | null;
   created_at: string;
   user_name: string;
+  bp_systolic: number | null;
+  bp_diastolic: number | null;
 }
 
 export default function WellnessPage() {
@@ -63,26 +65,25 @@ export default function WellnessPage() {
     }
   };
 
-  // Generate deterministic vitals based on database check-in fields
-  const getDeterministicVitals = (item: CheckIn) => {
-    const seed = item.user_id.charCodeAt(0) + (item.pain_level || 0);
-    const heartRate = 72 + (seed % 10) + (item.pain_level ? item.pain_level * 1.5 : 0);
-    const systolic = 118 + (seed % 12) + (item.pain_level ? item.pain_level * 2.5 : 0);
-    const diastolic = 76 + (seed % 8) + (item.pain_level ? item.pain_level * 1.5 : 0);
-    const spo2 = Math.min(100, Math.max(92, 98 - (item.pain_level ? Math.floor(item.pain_level / 4) : 0) + (seed % 2)));
-    
-    return {
-      heartRate: Math.round(heartRate),
-      bp: `${Math.round(systolic)}/${Math.round(diastolic)}`,
-      spo2: Math.round(spo2),
-    };
+  const formatBp = (item: CheckIn) => {
+    if (item.bp_systolic != null && item.bp_diastolic != null) {
+      return `${Math.round(item.bp_systolic)}/${Math.round(item.bp_diastolic)}`;
+    }
+    return null;
   };
 
-  // Aggregate stats from the current page of check-ins
+  const sleepWithHours = checkIns.filter((c) => c.sleep_hours !== null);
+  const waterWithGlasses = checkIns.filter((c) => c.water_glasses !== null);
+  const bpLogged = checkIns.filter((c) => c.bp_systolic != null && c.bp_diastolic != null);
+
   const stats = {
-    avgSleep: checkIns.length ? (checkIns.reduce((acc, c) => acc + (c.sleep_hours || 0), 0) / checkIns.filter(c => c.sleep_hours !== null).length || 0).toFixed(1) : '—',
-    avgWater: checkIns.length ? (checkIns.reduce((acc, c) => acc + (c.water_glasses || 0), 0) / checkIns.filter(c => c.water_glasses !== null).length || 0).toFixed(1) : '—',
-    normalSpO2Count: checkIns.filter(c => getDeterministicVitals(c).spo2 >= 95).length,
+    avgSleep: sleepWithHours.length
+      ? (sleepWithHours.reduce((acc, c) => acc + (c.sleep_hours || 0), 0) / sleepWithHours.length).toFixed(1)
+      : '—',
+    avgWater: waterWithGlasses.length
+      ? (waterWithGlasses.reduce((acc, c) => acc + (c.water_glasses || 0), 0) / waterWithGlasses.length).toFixed(1)
+      : '—',
+    bpLoggedCount: bpLogged.length,
   };
 
   return (
@@ -125,8 +126,8 @@ export default function WellnessPage() {
             <Heart className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-rose-700 dark:text-rose-400">{loading ? '—' : `${stats.normalSpO2Count} logs`}</p>
-            <p className="text-xs text-slate-600 dark:text-slate-400">Healthy SpO2 levels (≥95%)</p>
+            <p className="text-2xl font-bold text-rose-700 dark:text-rose-400">{loading ? '—' : `${stats.bpLoggedCount} logs`}</p>
+            <p className="text-xs text-slate-600 dark:text-slate-400">BP readings on this page</p>
           </div>
         </div>
       </div>
@@ -169,7 +170,7 @@ export default function WellnessPage() {
                 </tr>
               ) : (
                 checkIns.map((item) => {
-                  const vitals = getDeterministicVitals(item);
+                  const bp = formatBp(item);
                   return (
                     <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                       <td className="table-cell">
@@ -185,20 +186,11 @@ export default function WellnessPage() {
                       <td className="table-cell text-sm text-slate-600 dark:text-slate-400">
                         {formatDate(item.created_at || item.check_in_date)}
                       </td>
-                      <td className="table-cell">
-                        <div className="flex items-center gap-1.5 font-medium text-slate-900 dark:text-white text-sm">
-                          <Heart className="w-4 h-4 text-red-500 fill-red-500" />
-                          {vitals.heartRate} bpm
-                        </div>
-                      </td>
+                      <td className="table-cell text-sm text-slate-400">—</td>
                       <td className="table-cell text-sm text-slate-800 dark:text-slate-200 font-medium">
-                        {vitals.bp} mmHg
+                        {bp ? `${bp} mmHg` : <span className="text-slate-400 font-normal">—</span>}
                       </td>
-                      <td className="table-cell">
-                        <Badge variant={vitals.spo2 >= 95 ? 'success' : 'danger'} size="sm">
-                          {vitals.spo2}% O₂
-                        </Badge>
-                      </td>
+                      <td className="table-cell text-sm text-slate-400">—</td>
                       <td className="table-cell text-sm text-slate-700 dark:text-slate-300">
                         <span className="font-medium">{item.sleep_hours ?? '—'} hrs</span>
                         {item.sleep_quality && (

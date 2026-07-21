@@ -155,22 +155,22 @@ follow existing per-file convention, this repo is not fully consistent about it.
 
 ## Auth Model
 
-**Not the same auth as the mobile app.** No per-admin accounts exist server-side today, despite
-the `admin-management/accounts`, `roles`, and `permissions` pages suggesting otherwise.
+**Not the same auth as the mobile app.** Dynamic panel roles:
 
-- Login: `POST /admin/api/login` with `{ username, password }` against a **single hardcoded
-  credential pair** from `tinybit-server` env vars `ADMIN_USERNAME`/`ADMIN_PASSWORD`.
-- Issues a JWT signed with `ADMIN_JWT_SECRET`, audience `tinybit-admin`.
-- Token stored in `sessionStorage` (`tb-admin-token`); admin user object also cached in
-  `sessionStorage` (`tb-admin-user`) via `toAdminUser()` in `AuthContext.tsx`, which **hardcodes**
-  `role: 'super_admin'` and `permissions: ['*']` for whoever logs in — there is no real per-admin
-  RBAC yet, the roles/permissions UI is aspirational.
-- 2FA is wired into the login flow (`requiresTwoFactor`, `/auth/2fa` page) but `verifyOtp()` in
-  `AuthContext.tsx` always returns `false` — **not implemented**.
+| Login | Role source | Notes |
+|--------|-------------|--------|
+| Env `ADMIN_USERNAME` / `ADMIN_PASSWORD` | Implicit **Super Admin** | Full access (`permissions: ['*']`); manages admins + roles |
+| `admin_users` row | Assigned `admin_roles` row | JWT carries `role`, `role_id`, `permissions[]` |
+
+- Seeded system roles: `super_admin`, `operations_admin`, `content_manager`, `support_manager`,
+  `moderator` (defaults match User Management → Role Management UI). Custom roles allowed.
+- APIs: `GET/POST/PATCH/DELETE /admin/api/roles`, `GET/POST/PATCH/DELETE /admin/api/admins*`
+  (admin CRUD + role mutations = Super Admin only). Other routes use `requirePermission(...)`.
+- Client: `AuthContext` stores permissions; Sidebar hides nav via `src/utils/adminPermissions.ts`.
+- Apply server patches: `mysql/patches/2026-07-20-admin-users.sql` then
+  `mysql/patches/2026-07-20-admin-roles.sql` (or fresh `schema.sql`).
+- 2FA UI exists but `verifyOtp()` still returns `false` — not implemented.
 - Send `Authorization: Bearer <token>` on all `/admin/api/*` calls (handled by `adminApi.ts`).
-
-If you're asked to build out multi-admin accounts or real RBAC, that's a from-scratch feature on
-both this repo and `tinybit-server`, not a bug fix.
 
 ---
 
@@ -280,8 +280,8 @@ against the server before starting, this reflects the schema at the time it was 
   `profiles.plan_type/plan_status/plan_amount` exist but nothing populates them — this is the
   "Pro plan / payments — not started" item already flagged (P3) in `tinybit-server`'s own CLAUDE.md.
 - `support/*` (tickets, chat, escalation, queries) — no ticketing tables at all.
-- `admin-management/accounts` / `roles` / `permissions` + `settings/roles` + `users/roles` — blocked
-  on real multi-admin accounts/RBAC (today it's one shared hardcoded login, see "Auth Model").
+- `admin-management/accounts` / `roles` / `permissions` + `users/roles` / `settings/roles` — **wired**
+  to dynamic `admin_roles` (see Auth Model).
 - `settings/audit-logs` — **now Tier 1**: `admin-management/logs` is fully wired to the real
   `admin_audit_log` table via `GET /admin/api/audit-log` (see `getAuditLogs` in `adminApi.ts`);
   this page just needs the same data source swapped in.

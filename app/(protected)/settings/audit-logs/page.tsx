@@ -17,6 +17,13 @@ const moduleForTargetType: Record<string, string> = {
   mood_media: 'Content Management',
   quiz_question: 'Content Management',
   inspiration: 'Content Management',
+  admin: 'Admin Management',
+  admin_role: 'Admin Management',
+  role: 'Admin Management',
+  payment_refund: 'Billing',
+  payment_pricing_tier: 'Billing',
+  help_faq: 'Content Management',
+  help_tutorial: 'Content Management',
 };
 
 function logStatus(log: AuditLogEntry): 'success' | 'failed' {

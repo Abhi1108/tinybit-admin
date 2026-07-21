@@ -65,7 +65,6 @@ export function TopBar({ sidebarCollapsed }: TopBarProps) {
   const roleLabels: Record<string, string> = {
     super_admin: 'Super Admin',
     operations_admin: 'Operations Admin',
-    healthcare_admin: 'Healthcare Admin',
     content_manager: 'Content Manager',
     support_manager: 'Support Manager',
     moderator: 'Moderator',
@@ -195,7 +194,9 @@ export function TopBar({ sidebarCollapsed }: TopBarProps) {
             </div>
             <div className="hidden sm:block text-left">
               <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-none">{user?.name?.split(' ')[0]}</p>
-              <p className="text-[10px] text-slate-500 leading-tight mt-0.5">{roleLabels[user?.role || '']}</p>
+              <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
+                {roleLabels[user?.role || ''] || (user?.role || '').replace(/_/g, ' ')}
+              </p>
             </div>
             <ChevronDown className="w-3 h-3 text-slate-400" />
           </button>

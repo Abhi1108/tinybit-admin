@@ -1,17 +1,23 @@
 'use client';
-import React, { useEffect, useState } from 'react';
-import { Wallet, Search, Download, CheckCircle, XCircle, Clock, Loader2, AlertCircle } from 'lucide-react';
-import { Badge, cn } from '@/src/components/ui';
-import { getPaymentOrders, type PaymentOrder } from '@/src/services/adminApi';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  Wallet, Search, Download, CheckCircle, XCircle, Clock, RotateCcw,
+  Loader2, AlertCircle,
+} from 'lucide-react';
+import { Badge, Button, Input, Modal, Select, cn } from '@/src/components/ui';
+import { getPaymentOrders, refundPayment, type PaymentOrder } from '@/src/services/adminApi';
 
 interface Payment {
   id: string;
+  paymentId: string | null;
+  paymentStatus: string | null;
   txnId: string;
   userName: string;
   plan: string;
   amount: number;
+  currency: string;
   method: string;
-  status: 'success' | 'failed' | 'pending';
+  status: 'success' | 'failed' | 'pending' | 'refunded';
   date: string;
 }
 
@@ -25,20 +31,25 @@ function mapMethod(method: string | null | undefined): string {
   return method;
 }
 
-function mapStatus(order: PaymentOrder): 'success' | 'failed' | 'pending' {
+function mapStatus(order: PaymentOrder): Payment['status'] {
   const ps = order.payment?.status;
-  if (ps === 'captured' || order.status === 'paid') return 'success';
+  if (ps === 'refunded') return 'refunded';
+  if (ps === 'captured') return 'success';
   if (ps === 'failed' || order.status === 'cancelled' || order.status === 'expired') return 'failed';
+  if (order.status === 'paid' && !ps) return 'success';
   return 'pending';
 }
 
 function mapOrder(order: PaymentOrder): Payment {
   return {
     id: order.id,
+    paymentId: order.payment?.id ?? null,
+    paymentStatus: order.payment?.status ?? null,
     txnId: order.payment?.razorpay_payment_id || order.razorpay_order_id || order.id,
     userName: order.guardian_name || order.guardian_id?.slice(0, 8) || '—',
     plan: `${order.elder_count_at_purchase} elder${order.elder_count_at_purchase === 1 ? '' : 's'} · ${order.interval_days}d`,
-    amount: Number(order.payment?.status === 'captured' ? order.amount : order.amount),
+    amount: Number(order.amount),
+    currency: order.currency || 'INR',
     method: mapMethod(order.payment?.method),
     status: mapStatus(order),
     date: order.payment?.captured_at || order.created_at,
@@ -49,12 +60,14 @@ const statusIcon = {
   success: <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />,
   failed: <XCircle className="w-3.5 h-3.5 text-red-500" />,
   pending: <Clock className="w-3.5 h-3.5 text-amber-500" />,
+  refunded: <RotateCcw className="w-3.5 h-3.5 text-slate-500" />,
 };
 
-const statusVariants: Record<string, 'success' | 'danger' | 'warning'> = {
+const statusVariants: Record<Payment['status'], 'success' | 'danger' | 'warning' | 'default'> = {
   success: 'success',
   failed: 'danger',
   pending: 'warning',
+  refunded: 'default',
 };
 
 const methodColors: Record<string, string> = {
@@ -65,6 +78,11 @@ const methodColors: Record<string, string> = {
   '—': 'bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
 };
 
+function formatMoney(amount: number, currency: string) {
+  const symbol = currency === 'INR' ? '₹' : `${currency} `;
+  return `${symbol}${amount.toLocaleString('en-IN')}`;
+}
+
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,25 +90,33 @@ export default function PaymentsPage() {
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await getPaymentOrders({ limit: 100 });
-        if (res.success) {
-          setPayments((res.orders || []).map(mapOrder));
-        } else {
-          setError(res.error || 'Failed to load payments');
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load payments');
-      } finally {
-        setLoading(false);
+  const [refundTarget, setRefundTarget] = useState<Payment | null>(null);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('');
+  const [refundSpeed, setRefundSpeed] = useState<'normal' | 'instant'>('normal');
+  const [refunding, setRefunding] = useState(false);
+  const [refundError, setRefundError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await getPaymentOrders({ limit: 100 });
+      if (res.success) {
+        setPayments((res.orders || []).map(mapOrder));
+      } else {
+        setError(res.error || 'Failed to load payments');
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load payments');
+    } finally {
+      setLoading(false);
     }
-    load();
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const filtered = payments.filter(p => {
     const matchFilter = filter === 'all' || p.status === filter;
@@ -100,10 +126,61 @@ export default function PaymentsPage() {
 
   const totalRevenue = payments.filter(p => p.status === 'success').reduce((a, p) => a + p.amount, 0);
 
+  const openRefund = (pay: Payment) => {
+    setRefundTarget(pay);
+    setRefundAmount(String(pay.amount));
+    setRefundReason('');
+    setRefundSpeed('normal');
+    setRefundError(null);
+  };
+
+  const closeRefund = () => {
+    if (refunding) return;
+    setRefundTarget(null);
+    setRefundError(null);
+  };
+
+  const handleRefund = async () => {
+    if (!refundTarget?.paymentId) {
+      setRefundError('This order has no captured payment to refund.');
+      return;
+    }
+
+    const amount = Number(refundAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setRefundError('Enter a valid refund amount greater than 0.');
+      return;
+    }
+    if (amount > refundTarget.amount) {
+      setRefundError(`Amount cannot exceed the captured payment (${formatMoney(refundTarget.amount, refundTarget.currency)}).`);
+      return;
+    }
+
+    setRefunding(true);
+    setRefundError(null);
+    try {
+      const res = await refundPayment(refundTarget.paymentId, {
+        amount,
+        speed: refundSpeed,
+        reason: refundReason.trim() || undefined,
+      });
+      if (!res.success) {
+        setRefundError(res.error || 'Refund failed');
+        return;
+      }
+      setRefundTarget(null);
+      await load();
+    } catch (err) {
+      setRefundError(err instanceof Error ? err.message : 'Refund failed');
+    } finally {
+      setRefunding(false);
+    }
+  };
+
   const handleExport = () => {
     const csv = [
-      ['Transaction ID', 'User', 'Plan', 'Method', 'Status', 'Date', 'Amount'],
-      ...filtered.map(p => [p.txnId, p.userName, p.plan, p.method, p.status, p.date, String(p.amount)]),
+      ['Transaction ID', 'User', 'Plan', 'Method', 'Status', 'Date', 'Amount', 'Currency'],
+      ...filtered.map(p => [p.txnId, p.userName, p.plan, p.method, p.status, p.date, String(p.amount), p.currency]),
     ].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
@@ -135,7 +212,7 @@ export default function PaymentsPage() {
         {[
           { label: 'Total Revenue (Shown)', value: `₹${totalRevenue.toLocaleString()}`, color: 'text-emerald-600' },
           { label: 'Successful', value: payments.filter(p => p.status === 'success').length, color: 'text-brand-600' },
-          { label: 'Failed / Pending', value: payments.filter(p => p.status !== 'success').length, color: 'text-red-500' },
+          { label: 'Failed / Pending / Refunded', value: payments.filter(p => p.status !== 'success').length, color: 'text-red-500' },
         ].map(item => (
           <div key={item.label} className="card p-4 text-center">
             <p className={`text-2xl font-bold ${item.color}`}>{item.value}</p>
@@ -145,7 +222,7 @@ export default function PaymentsPage() {
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
-        {(['all', 'success', 'failed', 'pending'] as const).map(s => (
+        {(['all', 'success', 'failed', 'pending', 'refunded'] as const).map(s => (
           <button
             key={s}
             onClick={() => setFilter(s)}
@@ -182,6 +259,7 @@ export default function PaymentsPage() {
                   <th className="text-left text-xs font-semibold text-slate-500 dark:text-slate-400 px-4 py-3">Status</th>
                   <th className="text-left text-xs font-semibold text-slate-500 dark:text-slate-400 px-4 py-3">Date</th>
                   <th className="text-right text-xs font-semibold text-slate-500 dark:text-slate-400 px-5 py-3">Amount</th>
+                  <th className="text-right text-xs font-semibold text-slate-500 dark:text-slate-400 px-5 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -205,9 +283,28 @@ export default function PaymentsPage() {
                       {new Date(pay.date).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
                     </td>
                     <td className="px-5 py-3 text-right">
-                      <span className={cn('text-sm font-semibold', pay.status === 'success' ? 'text-emerald-600' : 'text-slate-400')}>
-                        ₹{pay.amount}
+                      <span className={cn(
+                        'text-sm font-semibold',
+                        pay.status === 'success' ? 'text-emerald-600' : pay.status === 'refunded' ? 'text-slate-500' : 'text-slate-400',
+                      )}>
+                        {formatMoney(pay.amount, pay.currency)}
                       </span>
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      {pay.paymentStatus === 'captured' && pay.paymentId ? (
+                        <Button
+                          size="xs"
+                          variant="danger"
+                          icon={<RotateCcw className="w-3 h-3" />}
+                          onClick={() => openRefund(pay)}
+                        >
+                          Refund
+                        </Button>
+                      ) : pay.status === 'refunded' ? (
+                        <span className="text-xs text-slate-400">Refunded</span>
+                      ) : (
+                        <span className="text-xs text-slate-300 dark:text-slate-600">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -219,6 +316,79 @@ export default function PaymentsPage() {
           </>
         )}
       </div>
+
+      <Modal
+        open={!!refundTarget}
+        onClose={closeRefund}
+        title="Refund payment"
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={closeRefund} disabled={refunding}>
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" loading={refunding} onClick={handleRefund}>
+              Confirm refund
+            </Button>
+          </div>
+        }
+      >
+        {refundTarget && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-sm space-y-1">
+              <p className="font-medium text-slate-900 dark:text-white">{refundTarget.userName}</p>
+              <p className="text-xs font-mono text-slate-500">{refundTarget.txnId}</p>
+              <p className="text-xs text-slate-500">{refundTarget.plan} · Captured {formatMoney(refundTarget.amount, refundTarget.currency)}</p>
+            </div>
+
+            {refundError && (
+              <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-400">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{refundError}</span>
+              </div>
+            )}
+
+            <Input
+              label={`Refund amount (${refundTarget.currency})`}
+              type="number"
+              min={0.01}
+              step="0.01"
+              max={refundTarget.amount}
+              value={refundAmount}
+              onChange={e => setRefundAmount(e.target.value)}
+              disabled={refunding}
+            />
+
+            <Select
+              label="Speed"
+              value={refundSpeed}
+              onChange={e => setRefundSpeed(e.target.value as 'normal' | 'instant')}
+              disabled={refunding}
+              options={[
+                { value: 'normal', label: 'Normal' },
+                { value: 'instant', label: 'Instant' },
+              ]}
+            />
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                Reason (optional)
+              </label>
+              <textarea
+                className="input-field h-20 resize-none"
+                value={refundReason}
+                onChange={e => setRefundReason(e.target.value)}
+                placeholder="Why is this being refunded?"
+                disabled={refunding}
+              />
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              This calls Razorpay via the admin API and writes an audit log entry. Partial refunds are allowed up to the captured amount.
+            </p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

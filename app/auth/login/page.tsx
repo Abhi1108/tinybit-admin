@@ -19,11 +19,11 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const ok = await login(username, password);
-      if (ok) {
+      const result = await login(username, password);
+      if (result.ok) {
         router.replace('/dashboard');
       } else {
-        setError('Invalid username or password.');
+        setError(result.error || 'Invalid username or password.');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to sign in. Check the API URL and try again.');
@@ -56,7 +56,7 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Username</label>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Username or email</label>
               <input
                 type="text"
                 className="input-field"

@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../ui';
 import { useAuth } from '../../contexts/AuthContext';
+import { canAccessPath, SUPER_ADMIN_MANAGEMENT_PATHS } from '../../utils/adminPermissions';
 
 interface NavItem {
   id: string;
@@ -167,6 +168,7 @@ const NAV_ITEMS: NavItem[] = [
       { id: 'notification-settings', label: 'Notification Settings', icon: <Bell className="w-4 h-4" />, path: '/settings/notifications' },
       { id: 'ai-settings', label: 'AI Settings', icon: <Bot className="w-4 h-4" />, path: '/settings/ai' },
       { id: 'role-permissions', label: 'Role Permissions', icon: <Shield className="w-4 h-4" />, path: '/settings/roles' },
+      { id: 'audit-logs', label: 'Audit Logs', icon: <ScrollText className="w-4 h-4" />, path: '/settings/audit-logs' },
     ],
   },
 ];
@@ -178,7 +180,24 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, logout, isSuperAdmin, permissions } = useAuth();
+
+  const navItems = useMemo(() => {
+    return NAV_ITEMS.map((item) => {
+      if (item.path) {
+        if (!canAccessPath(permissions, item.path)) return null;
+        return item;
+      }
+      if (!item.children) return item;
+      const children = item.children.filter((child) => {
+        if (!child.path) return true;
+        if (SUPER_ADMIN_MANAGEMENT_PATHS.has(child.path) && !isSuperAdmin) return false;
+        return canAccessPath(permissions, child.path);
+      });
+      if (!children.length) return null;
+      return { ...item, children };
+    }).filter(Boolean) as NavItem[];
+  }, [isSuperAdmin, permissions]);
 
   const [openSections, setOpenSections] = useState<Set<string>>(() => {
     const set = new Set<string>();
@@ -209,7 +228,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const roleLabels: Record<string, string> = {
     super_admin: 'Super Admin',
     operations_admin: 'Operations Admin',
-    healthcare_admin: 'Healthcare Admin',
     content_manager: 'Content Manager',
     support_manager: 'Support Manager',
     moderator: 'Moderator',
@@ -248,7 +266,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-        {NAV_ITEMS.map(item => {
+        {navItems.map(item => {
           const isOpen = openSections.has(item.id);
           const isActive = isActiveParent(item);
 
@@ -328,7 +346,9 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">{user.name}</p>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{roleLabels[user.role]}</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                {roleLabels[user.role] || user.role?.replace(/_/g, ' ')}
+              </p>
             </div>
           </div>
         )}
